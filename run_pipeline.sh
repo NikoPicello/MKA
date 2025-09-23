@@ -1,5 +1,5 @@
 #!/bin/bash
-source /mnt/slurm_home/bcwen/miniconda3/etc/profile.d/conda.sh
+source ~/anaconda3/etc/profile.d/conda.sh
 
 PROJECT_NAME=${1:-RM001-01}
 

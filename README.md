@@ -88,6 +88,10 @@ pretrained_models/
         └── wholebody.pth
 ```
 
+Some instructions:
+ - [smplest_x_h and yolov8x.pt](https://github.com/SMPLCap/SMPLest-X?tab=readme-ov-file#preparation)
+ - [hamer_ckpts and vitpose_ckpts](https://github.com/geopavlakos/hamer/blob/main/fetch_demo_data.sh)
+ - [sam2.1](https://github.com/facebookresearch/sam2?tab=readme-ov-file#download-checkpoints)
 
 ##  Running the Pipeline
 
