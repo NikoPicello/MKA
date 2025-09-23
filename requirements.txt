@@ -1,0 +1,33 @@
+mmcv-full==1.4.0 -f https://download.openmmlab.com/mmcv/dist/cu117/torch1.13.1/index.html
+mmdet==2.16.0
+mmengine==0.10.7
+mmhuman3d==0.11.0
+mmpose==0.21.0
+numpy==1.23.1
+smplx==0.1.28
+tqdm==4.67.1
+pytorch-lightning==2.1
+opencv-python==4.8.1.78
+opencv-python-headless==4.6.0.66
+opencv-contrib-python==4.6.0.66
+chumpy==0.70
+trimesh==4.6.2
+pyrender==0.1.45
+matplotlib==3.7.5
+json_tricks==3.17.3
+einops==0.8.1
+timm==1.0.14
+ultralytics==8.3.75
+pyopengl
+fvcore
+pycocotools
+imageio[ffmpeg]
+rems
+aniposelib
+prettytable
+py7zr
+webdataset
+xrprimer==0.5.2
+filterpy==1.4.5
+iopath==0.1.9
+detectron2 @ git+https://github.com/facebookresearch/detectron2
