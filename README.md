@@ -4,6 +4,8 @@ We introduce Markerless Kinematic Analysis (MKA), an end-to-end framework that r
 Multi-view fusion and explicit human-object interaction modeling yield anatomically consistent, metric-scale poses that generalize to cluttered homes, gyms, and clinics. 
 By merging computer vision with rehabilitative medicine, MKA enables continuous, objective, and scalable motion monitoring in natural environments, opening avenues for personalized training, tele-rehabilitation, and population-level musculoskeletal health surveillance.
 
+[![MKA-Demo]](https://github.com/user-attachments/assets/20d603a7-c2c9-42ed-ba3f-a96d68d19b4b)
+
 
 ##  Setup Instructions
 
@@ -32,6 +34,8 @@ If build cpp_module fail, you can try conda-based gcc:
 conda install -c conda-forge gcc=9 gxx=9
 conda install -c conda-forge libxcrypt
 ```
+
+You also need to setup SAM2 environment following [facebookresearch/sam2](https://github.com/facebookresearch/sam2)
 
 ### 2. Human Models
 Human body model files are required for body, hand, and face parameterization.
