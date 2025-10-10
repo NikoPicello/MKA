@@ -3,7 +3,6 @@ import os
 os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 import numpy as np
 import torch
-import matplotlib.pyplot as plt
 from PIL import Image
 from tqdm import tqdm, trange
 import gc
@@ -58,21 +57,24 @@ def main(args):
     
     sam2_checkpoint = f"{root_path}/pretrained_models/sam2.1_hiera_large.pt"
     model_cfg = f"configs/sam2.1/sam2.1_hiera_l.yaml"
-    predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
     
     with open(prompt_file, 'r') as fin:
         cam_dict = json.load(fin)
 
     video_filenames = sorted([x for x in os.listdir(in_root) if x.endswith(".mp4") or x.endswith(".mkv")])
     for video_fn in video_filenames:
+        predictor = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
         video_name = video_fn.split(".")[0]
+        bbox_prompt = None
+        point_prompt = None
         if video_fn not in cam_dict :
             continue
         elif len(cam_dict[video_fn]) == 0:
             continue
-        else :
+        elif "bbox" in cam_dict[video_fn] :
             bbox_prompt = cam_dict[video_fn]["bbox"]
-        
+        elif "point" in cam_dict[video_fn] :
+            point_prompt = cam_dict[video_fn]["point"]
         
         os.makedirs(os.path.join(out_root, "mask", video_name) , exist_ok=True)
         os.makedirs(os.path.join(out_root, "overlay") , exist_ok=True)
@@ -101,14 +103,21 @@ def main(args):
         inference_state = predictor.init_state(video_path=video_path)
         predictor.reset_state(inference_state)
 
-        # # Let's add a box at (x_min, y_min, x_max, y_max) = (300, 0, 500, 400) to get started
-        # box = np.array([300, 0, 500, 400], dtype=np.float32)
-        _, out_obj_ids, out_mask_logits = predictor.add_new_points_or_box(
-            inference_state=inference_state,
-            frame_idx=0,
-            obj_id=4,
-            box=np.array(bbox_prompt, dtype=np.float32),
-        )
+        if bbox_prompt is not None :
+            _, out_obj_ids, out_mask_logits = predictor.add_new_points_or_box(
+                inference_state=inference_state,
+                frame_idx=0,
+                obj_id=4,
+                box=np.array(bbox_prompt, dtype=np.float32),
+            )
+        if point_prompt is not None :
+            _, out_obj_ids, out_mask_logits = predictor.add_new_points_or_box(
+                inference_state=inference_state,
+                frame_idx=0,
+                obj_id=4,
+                points=np.array([point_prompt], dtype=np.float32),
+                labels=np.array([1], np.int32)
+            )
 
         # run propagation throughout the video and collect the results in a dict
         video_segments = {}  # video_segments contains the per-frame segmentation results
@@ -137,7 +146,8 @@ def main(args):
 
                 # Alpha blend overlay into original image
                 alpha = 0.5  # transparency
-                overlayed = cv2.addWeighted(overlay, alpha, overlayed, 1 - alpha, 0)
+                overlayed = overlayed * (1 - mask[..., None]) + ((overlayed * (1 - alpha)) + mask[..., None] * color * alpha) * mask[..., None]
+                overlayed = overlayed.astype(np.uint8)
 
             # Save segmentation mask (single-channel, values 0/1)
             result_path = os.path.join(out_root, "mask", video_name, f"{out_frame_idx:05d}.png")

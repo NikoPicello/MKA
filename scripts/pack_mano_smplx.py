@@ -236,7 +236,7 @@ def render_mesh_cam(img, verts, faces, cam_param, rasterizer=None):
             image_size=(img_h, img_w), 
             blur_radius=0.0, 
             faces_per_pixel=1, 
-            bin_size = None,  # this setting controls whether naive or coarse-to-fine rasterization is used
+            bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
             max_faces_per_bin = None  # this setting is for coarse rasterization
         )
         rasterizer=MeshRasterizer(
@@ -285,7 +285,7 @@ def render_mesh_world(img, verts, faces, cam_param):
         image_size=(img_h, img_w), 
         blur_radius=0.0, 
         faces_per_pixel=1, 
-        bin_size = None,  # this setting controls whether naive or coarse-to-fine rasterization is used
+        bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
         max_faces_per_bin = None  # this setting is for coarse rasterization
     )
     rasterizer=MeshRasterizer(

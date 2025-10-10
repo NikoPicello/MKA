@@ -206,7 +206,7 @@ def select_best_hand_view(all_sv_arr, fidx):
     right_vi = best_dict["right"]["max_vi"]
     return left_vi, right_vi 
 
-def render_mesh_cam(img, verts, faces, cam_param, rasterizer=None):
+def render_mesh_cam(img, verts, faces, cam_param, rasterizer=None, alpha=0.8):
     device = verts.device
     img_h, img_w = img.shape[:2]
     image_size = torch.tensor([img_h, img_w]).unsqueeze(0).to(device)
@@ -236,7 +236,7 @@ def render_mesh_cam(img, verts, faces, cam_param, rasterizer=None):
             image_size=(img_h, img_w), 
             blur_radius=0.0, 
             faces_per_pixel=1, 
-            bin_size = None,  # this setting controls whether naive or coarse-to-fine rasterization is used
+            bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
             max_faces_per_bin = None  # this setting is for coarse rasterization
         )
         rasterizer=MeshRasterizer(
@@ -258,11 +258,11 @@ def render_mesh_cam(img, verts, faces, cam_param, rasterizer=None):
     # rendered_imgs = rendered_imgs[:, :img_h, :img_w].clone() ### crop 
     render_img = rendered_imgs[0, ..., :3].detach().cpu().numpy() * 255.0
     render_mask = rendered_imgs[0, ..., 3:].detach().cpu().numpy() 
-    output_image = img * (1.0 - render_mask) + render_img * render_mask
+    output_image = img * (1.0 - render_mask) + (img * (1.0 - alpha) + render_img * alpha) * render_mask
     output_image = output_image.astype(np.uint8)
     return output_image
 
-def render_mesh_world(img, verts, faces, cam_param):
+def render_mesh_world(img, verts, faces, cam_param, sam_mask=None, alpha=0.8):
     device = verts.device
     img_h, img_w = img.shape[:2]
     image_size = torch.tensor([img_h, img_w]).unsqueeze(0).to(device)
@@ -285,7 +285,7 @@ def render_mesh_world(img, verts, faces, cam_param):
         image_size=(img_h, img_w), 
         blur_radius=0.0, 
         faces_per_pixel=1, 
-        bin_size = None,  # this setting controls whether naive or coarse-to-fine rasterization is used
+        bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
         max_faces_per_bin = None  # this setting is for coarse rasterization
     )
     rasterizer=MeshRasterizer(
@@ -310,7 +310,8 @@ def render_mesh_world(img, verts, faces, cam_param):
     # rendered_imgs = rendered_imgs[:, :img_h, :img_w].clone() ### crop 
     render_img = rendered_imgs[0, ..., :3].detach().cpu().numpy() * 255.0
     render_mask = rendered_imgs[0, ..., 3:].detach().cpu().numpy() 
-    output_image = img * (1.0 - render_mask) + render_img * render_mask
+    output_image = img * (1.0 - render_mask) + (img * (1.0 - alpha) + render_img * alpha) * render_mask
+    output_image = output_image * (1.0 - sam_mask) + (output_image * 0.5 + np.array([0, 0, 255]) * 0.5) * sam_mask
     output_image = output_image.astype(np.uint8)
     return output_image
 
@@ -318,6 +319,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="HaMeR demo code")
     parser.add_argument("--video_dir", type=str, required=True)
     parser.add_argument("--data_dir", type=str, required=True)
+    parser.add_argument("--sam_dir", type=str, required=True)
     parser.add_argument("--out_dir", type=str, required=True)
     
     parser.add_argument('--use_mano', action='store_true')
@@ -377,16 +379,22 @@ def main():
         cam_info_arr.append(cam_param)
 
     cam_len = len(all_sv_arr)
-    front_vi = 0
+    front_vi = 1
     sv_len = len(all_sv_arr[front_vi])
 
-    video_path = os.path.join(args.video_dir, video_filenames[0])
+    video_path = os.path.join(args.video_dir, video_filenames[front_vi])
     cap = cv2.VideoCapture(video_path)
     fps = int(cap.get(cv2.CAP_PROP_FPS))
-    render_cam_dict = cam_info_arr[0]
+    render_cam_dict = cam_info_arr[front_vi]
+    v_root, ext = os.path.splitext(video_filenames[front_vi])
+    sam_path = os.path.join(args.sam_dir, "mask", v_root)
+    if os.path.exists(sam_path):
+        sam_mask = [os.path.join(sam_path, x) for x in sorted(os.listdir(sam_path)) if x.endswith(".png")]
+    else:
+        sam_mask = None
 
     if args.use_mano:
-        out_video_path = os.path.join(args.out_dir, f"render_smplx_with_mano__ftrd.mp4")
+        out_video_path = os.path.join(args.out_dir, f"render_smplx_with_mano_sam.mp4")
     else:
         out_video_path = os.path.join(args.out_dir, f"render_smplx_without_mano.mp4")
 
@@ -459,20 +467,27 @@ def main():
     left_hand_pose = []
     right_root_pose = []
     right_hand_pose = []
+    valid_left_keys = []
+    valid_right_keys = []
+
     for k, v in hand_dicts.items() :
-        left_root_pose.append(v["left"]["root_pose"].squeeze().cpu().numpy())
-        left_hand_pose.append(v["left"]["hand_pose"].squeeze().cpu().numpy())
-        right_root_pose.append(v["right"]["root_pose"].squeeze().cpu().numpy())
-        right_hand_pose.append(v["right"]["hand_pose"].squeeze().cpu().numpy())
-    
+        if v["left"] is not None :
+            left_root_pose.append(v["left"]["root_pose"].squeeze().cpu().numpy())
+            left_hand_pose.append(v["left"]["hand_pose"].squeeze().cpu().numpy())
+            valid_left_keys.append(k)
+        if v["right"] is not None :
+            right_root_pose.append(v["right"]["root_pose"].squeeze().cpu().numpy())
+            right_hand_pose.append(v["right"]["hand_pose"].squeeze().cpu().numpy())
+            valid_right_keys.append(k)
     left_root_pose = signal_filter1(np.array(left_root_pose))
     left_hand_pose = signal_filter2(np.array(left_hand_pose))
     right_root_pose = signal_filter1(np.array(right_root_pose))
     right_hand_pose = signal_filter2(np.array(right_hand_pose))
     
-    for idx, k in enumerate(hand_dicts):
+    for idx, k in enumerate(valid_left_keys):
         hand_dicts[k]["left"]["root_pose"] = torch.tensor(left_root_pose[idx]).to(device)
         hand_dicts[k]["left"]["hand_pose"] = torch.tensor(left_hand_pose[idx]).to(device)
+    for idx, k in enumerate(valid_right_keys):
         hand_dicts[k]["right"]["root_pose"] = torch.tensor(right_root_pose[idx]).to(device)
         hand_dicts[k]["right"]["hand_pose"] = torch.tensor(right_hand_pose[idx]).to(device)
     
@@ -541,7 +556,12 @@ def main():
         ##### visualization
         ret, bgr_img = cap.read()
         vis_img = bgr_img.copy()
-        mv_render_img = render_mesh_world(vis_img, mv_res['vertices'], faces_tensor, render_cam_dict)
+        if sam_mask is not None and len(sam_mask) == sv_len:
+            sam_m = cv2.imread(sam_mask[fidx], cv2.IMREAD_UNCHANGED)
+        else :
+            sam_m = np.zeros_like(vis_img[..., 0])
+        sam_m = sam_m[..., None]
+        mv_render_img = render_mesh_world(vis_img, mv_res['vertices'], faces_tensor, render_cam_dict, sam_m)
         mv_render_img = cv2.cvtColor(mv_render_img, cv2.COLOR_BGR2RGB)
         cv2.putText(mv_render_img, "%04d" % fidx, (100, 100), cv2.FONT_HERSHEY_SIMPLEX, 2.0, (0, 255, 0), 1, cv2.LINE_AA)
         writer.append_data(mv_render_img)
