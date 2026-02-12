@@ -1,9 +1,5 @@
 # Markerless Kinematic Analysis (MKA)
 
-We introduce Markerless Kinematic Analysis (MKA), an end-to-end framework that reconstructs full-body, articulated 3D meshes, including hands and manipulated objects, from ordinary RGB videos captured with single or multiple consumer cameras. 
-Multi-view fusion and explicit human-object interaction modeling yield anatomically consistent, metric-scale poses that generalize to cluttered homes, gyms, and clinics. 
-By merging computer vision with rehabilitative medicine, MKA enables continuous, objective, and scalable motion monitoring in natural environments, opening avenues for personalized training, tele-rehabilitation, and population-level musculoskeletal health surveillance.
-
 [![MKA-Demo]](https://github.com/user-attachments/assets/20d603a7-c2c9-42ed-ba3f-a96d68d19b4b)
 
 
@@ -103,3 +99,30 @@ To execute the full processing pipeline:
 ```bash
 bash run_pipeline.sh
 ```
+
+## Explore More [Motrix](https://github.com/MotrixLab) Projects
+
+### Motion Capture
+- [SMPL-X] [TPAMI'25] [SMPLest-X](https://github.com/MotrixLab/SMPLest-X): An extended version of [SMPLer-X](https://github.com/MotrixLab/SMPLer-X) with stronger foundation models.
+- [SMPL-X] [NeurIPS'23] [SMPLer-X](https://github.com/MotrixLab/SMPLer-X): Scaling up EHPS towards a family of generalist foundation models.
+- [SMPL-X] [ECCV'24] [WHAC](https://github.com/MotrixLab/WHAC): World-grounded human pose and camera estimation from monocular videos.
+- [SMPL-X] [CVPR'24] [AiOS](https://github.com/MotrixLab/AiOS): An all-in-one-stage pipeline combining detection and 3D human reconstruction. 
+- [SMPL-X] [NeurIPS'23] [RoboSMPLX](https://github.com/MotrixLab/RoboSMPLX): A framework to enhance the robustness of whole-body pose and shape estimation.
+- [SMPL-X] [ICML'25] [ADHMR](https://github.com/MotrixLab/ADHMR): A framework to align diffusion-based human mesh recovery methods via direct preference optimization.
+- [SMPL-X] [MKA](https://github.com/MotrixLab/MKA): Full-body 3D mesh reconstruction from single- or multi-view RGB videos.
+- [SMPL] [ICCV'23] [Zolly](https://github.com/MotrixLab/Zolly): 3D human mesh reconstruction from perspective-distorted images.
+- [SMPL] [IJCV'26] [PointHPS](https://github.com/MotrixLab/PointHPS): 3D HPS from point clouds captured in real-world settings.
+- [SMPL] [NeurIPS'22] [HMR-Benchmarks](https://github.com/MotrixLab/hmr-benchmarks): A comprehensive benchmark of HPS datasets, backbones, and training strategies.
+
+### Motion Generation
+- [SMPL-X] [ICLR'26] [ViMoGen](https://github.com/MotrixLab/ViMoGen): A comprehensive framework that transfers knowledge from ViGen to MoGen across data, modeling, and evaluation.
+- [SMPL-X] [ECCV'24] [LMM](https://github.com/MotrixLab/LMM): Large Motion Model for Unified Multi-Modal Motion Generation.
+- [SMPL-X] [NeurIPS'23] [FineMoGen](https://github.com/MotrixLab/FineMoGen): Fine-Grained Spatio-Temporal Motion Generation and Editing.
+- [SMPL] [InfiniteDance](https://github.com/MotrixLab/InfiniteDance): A large-scale 3D dance dataset and an MLLM-based music-to-dance model designed for robust in-the-wild generalization.
+- [SMPL] [NeurIPS'23] [InsActor](https://github.com/MotrixLab/insactor): Generating physics-based human motions from language and waypoint conditions via diffusion policies.
+- [SMPL] [ICCV'23] [ReMoDiffuse](https://github.com/MotrixLab/ReMoDiffuse): Retrieval-Augmented Motion Diffusion Model.
+- [SMPL] [TPAMI'24] [MotionDiffuse](https://github.com/MotrixLab/MotionDiffuse): Text-Driven Human Motion Generation with Diffusion Model.
+
+### Motion Dataset
+- [SMPL] [ECCV'22] [HuMMan](https://github.com/MotrixLab/humman_toolbox): Toolbox for HuMMan, a large-scale multi-modal 4D human dataset.
+- [SMPLX] [T-PAMI'24] [GTA-Human](https://github.com/MotrixLab/gta-human_toolbox): Toolbox for GTA-Human, a large-scale 3D human dataset generated with the GTA-V game engine.
