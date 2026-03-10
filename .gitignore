@@ -1,3 +1,7 @@
 **/__pycache__/*
 results/*
 sample_video/*
+models/*
+human_models/*
+pretrained_models/*
+dependencies/*

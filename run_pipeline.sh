@@ -1,19 +1,22 @@
 #!/bin/bash
-source ~/anaconda3/etc/profile.d/conda.sh
+source /opt/conda/etc/profile.d/conda.sh
 
-PROJECT_NAME=${1:-RM001-01}
+PROJECT_NAME=004096
 
-IN_ROOT=sample_video/${PROJECT_NAME}
-OUT_ROOT=results/${PROJECT_NAME}
+export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+export PYOPENGL_PLATFORM=osmesa
 
-conda activate sam2
-echo "=== running sam2"
-python scripts/sam_tracking.py \
-    --video_dir ${IN_ROOT} \
-    --prompt_file ${IN_ROOT}/sam_prompt.json \
-    --out_dir ${OUT_ROOT}/object
+IN_ROOT=sample_video/${PROJECT_NAME}/lego
+OUT_ROOT=results/${PROJECT_NAME}/lego
 
-conda deactivate
+# conda activate sam2
+# echo "=== running sam2"
+# python scripts/sam_tracking.py \
+#     --video_dir ${IN_ROOT} \
+#     --prompt_file sample_video/sam_prompt.json \
+#     --out_dir ${OUT_ROOT}/object
+# 
+# conda deactivate
 conda activate mka
 
 

@@ -2,8 +2,6 @@ import os
 import os.path as osp
 import sys
 sys.path.append(osp.dirname(osp.dirname(osp.abspath(__file__))))
-os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
-
 
 import argparse
 import numpy as np
