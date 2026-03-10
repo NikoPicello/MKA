@@ -1,0 +1,58 @@
+In order to make this to work (wip) do the following:
+
+0. Install miniconda3
+1. Execute the following instructions in order to exploit the correct version of cuda, cuda-toolkit, gcc, gxx, and libxcrypt
+
+    conda create -n mka python=3.8 pip -y
+    conda activate mka
+    conda install -c nvidia/label/cuda-11.7.0 cuda-toolkit=11.7 -y
+    conda install -c conda-forge gcc=11 gxx=11 libxcrypt -y
+
+2. Verify correct installation of cuda toolkit using:
+
+    nvcc --version
+
+    it should be using v11.7
+
+3. Proceed by installing torch, torchvision, torchaudio and pytorch3d
+
+    pip install torch==1.13.1+cu117 torchvision==0.14.1+cu117 torchaudio==0.13.1 --extra-index-url https://download.pytorch.org/whl/cu117
+    conda install https://anaconda.org/pytorch3d/pytorch3d/0.7.5/download/linux-64/pytorch3d-0.7.5-py38_cu117_pyt1131.tar.bz2 -y
+
+4. From the requirements, I couldn't install mcvv-full==1.4.0 and detectron2, thus I suggest you to install them from source:
+
+    Install the requirements with:
+      pip install -r requirements.txt
+    (I personally removed the mcvv-full and detectron2 lines because i build them from source, i don't know if it works also if kept)
+
+    In the server, in order to install pyzstd and pickle5 you have to do the following:
+    ln -sf /usr/include/crypt.h $CONDA_PREFIX/include/python3.8/
+    ln -sf /lib/x86_64-linux-gnu/libc.so.6 /lib64/libc.so.6
+    ln -sf /lib/x86_64-linux-gnu/libmvec.so.1 /lib64/libmvec.so.1
+    ln -sf /usr/lib/x86_64-linux-gnu/libc_nonshared.a /usr/lib64/libc_nonshared.a
+
+    sudo apt-get install -y libegl1-mesa libegl1-mesa-dev libgles2-mesa-dev
+    sudo apt-get install -y libosmesa6-dev freeglut3-dev
+
+
+    For mcvv-full do:
+      git clone https://github.com/open-mmlab/mmcv
+      git checkout v1.4.0
+      python3 setup.py install
+
+    For detectron2 do:
+      git clone https://github.com/facebookresearch/detectron2
+      python3 setup.py install
+    (I installed the latest in 2026, i.e., v0.6)
+
+4. Install ViTPose:
+    cd dependencies
+    git clone https://github.com/ViTAE-Transformer/ViTPose.git
+    cd ..
+    pip install -v -e dependencies/ViTPose
+
+5. Buiild C++ modules:
+    cd dependencies/cpp_module
+    sh install.sh
+    cd ../..
+
