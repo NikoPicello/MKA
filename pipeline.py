@@ -54,7 +54,7 @@ def main():
   from sam2.build_sam import build_sam2_video_predictor
 
   main_path = '/'.join(sys.path[0].split('/')[:-2]) + '/'
-  resources_path = os.path.join(main_path, 'resources')
+  resources_path = os.path.join(main_path, 'mka')
   calibs_path   = os.path.join(resources_path, 'calibs')
   sessions_path = os.path.join(resources_path, 'sessions')
   out_path = os.path.join(resources_path, 'sam_results')
@@ -63,8 +63,10 @@ def main():
   sam2_checkpoint = f"{root_path}/pretrained_models/sam2.1_hiera_large.pt"
   model_cfg = f"configs/sam2.1/sam2.1_hiera_l.yaml"
   sam2 = build_sam2_video_predictor(model_cfg, sam2_checkpoint, device=device)
+  print(sid_paths)
 
   yolo = YOLO(f"{root_path}/pretrained_models/yolov8x.pt")
+  print(sid_paths)
 
   for sid_path in sid_paths:
     with open(os.path.join(sid_path, 'session_data.txt')) as f:
@@ -112,7 +114,8 @@ def main():
 
         confs = res[0].boxes.conf.cpu().numpy()
         top2_idx = np.argsort(confs)[::-1][:2]
-        bbox_prompt = boxes[top2_idx]  # shape (2, 4)
+        bbox_prompt_a, bbox_prompt_b = boxes[top2_idx]  # shape (2, 4)
+
 
         inference_state = sam2.init_state(video_path=vid_path)
         sam2.reset_state(inference_state)
@@ -121,7 +124,7 @@ def main():
           inference_state=inference_state,
           frame_idx=0,
           obj_id=4,
-          box=np.array(bbox_prompt, dtype=np.float32),
+          box=np.array(bbox_prompt_a, dtype=np.float32),
         )
 
         video_segments = {}  # video_segments contains the per-frame segmentation results
@@ -160,7 +163,7 @@ def main():
             overlayed = overlayed.astype(np.uint8)
 
           # Save segmentation mask (single-channel, values 0/1)
-          result_path = os.path.join(out_root, "mask", video_name, f"{out_frame_idx:05d}.png")
+          result_path = os.path.join(out_path, "mask", video_name, f"{out_frame_idx:05d}.png")
           Image.fromarray(seg_mask).save(result_path)
 
           # Append overlayed frame to video
