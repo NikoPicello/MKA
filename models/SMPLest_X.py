@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import numpy as np 
+import numpy as np
 import cv2
 import math
 import copy
@@ -11,6 +11,7 @@ from human_models.human_models import SMPL, SMPLX
 from utils.transforms import rot6d_to_axis_angle, batch_rodrigues, rot6d_to_rotmat
 from utils.rotation import angle_axis_to_rotation_matrix, rotation_matrix_to_angle_axis
 from utils.data_utils import load_img
+from utils.visualization_utils import check_visibility_pt3d
 
 import dependencies.cpp_module.build.get_vis as get_vis
 
@@ -19,7 +20,7 @@ class Model(nn.Module):
     def __init__(self, config, encoder, decoder):
         super(Model, self).__init__()
         self.smpl_x = SMPLX.get_instance()
-        
+
         # network
         self.cfg = config
         self.encoder = encoder
@@ -47,7 +48,7 @@ class Model(nn.Module):
         # camera translation
         t_xy = cam_param[:, :2]
         gamma = torch.sigmoid(cam_param[:, 2])  # apply sigmoid to make it positive
-        k_value = torch.FloatTensor([math.sqrt(self.cfg.model.focal[0] * self.cfg.model.focal[1] * 
+        k_value = torch.FloatTensor([math.sqrt(self.cfg.model.focal[0] * self.cfg.model.focal[1] *
                             self.cfg.model.camera_3d_size * self.cfg.model.camera_3d_size / (
                 self.cfg.model.input_body_shape[0] * self.cfg.model.input_body_shape[1]))]).cuda().view(-1)
         t_z = k_value * gamma
@@ -90,12 +91,11 @@ class Model(nn.Module):
         output = self.smplx_layer(betas=shape, body_pose=body_pose, global_orient=root_pose, right_hand_pose=rhand_pose,
                                   transl=cam_trans, left_hand_pose=lhand_pose, jaw_pose=jaw_pose, leye_pose=zero_pose,
                                   reye_pose=zero_pose, expression=expr, return_full_pose=True)
-        
         # ##### update output with hand params
-        # update_joint_cam = None 
+        # update_joint_cam = None
         # if hand_params is not None:
         #     self.smplx_layer.flat_hand_mean = True
-        #     lelbow_pose_idx = self.smpl_x.orig_joints_name.index('L_Elbow') 
+        #     lelbow_pose_idx = self.smpl_x.orig_joints_name.index('L_Elbow')
         #     relbow_pose_idx = self.smpl_x.orig_joints_name.index('R_Elbow')
         #     lwrist_pose_idx = self.smpl_x.orig_joints_name.index('L_Wrist')
         #     rwrist_pose_idx = self.smpl_x.orig_joints_name.index('R_Wrist')
@@ -106,7 +106,7 @@ class Model(nn.Module):
         #     rwrist_smplx_cam = smplest_joint_cam[:, rwrist_pose_idx]
         #     lelbow_smplx_cam = smplest_joint_cam[:, lelbow_pose_idx]
         #     relbow_smplx_cam = smplest_joint_cam[:, relbow_pose_idx]
-            
+
         #     full_body_rotmat = torch.cat((root_pose, body_pose), dim=1)
         #     root_rotmat_chain = self.batch_global_rotation(full_body_rotmat)
         #     lwrist_orig_rotmat = root_rotmat_chain[:, lwrist_pose_idx].clone()
@@ -114,13 +114,13 @@ class Model(nn.Module):
         #     lelbow_global_rotmat_inv = torch.linalg.inv(root_rotmat_chain[:, lelbow_pose_idx])
         #     relbow_global_rotmat_inv = torch.linalg.inv(root_rotmat_chain[:, relbow_pose_idx])
 
-        #     lhand_update_flag = False 
+        #     lhand_update_flag = False
         #     lwrist_joint_cam = lwrist_smplx_cam.clone()
         #     if hand_params["left"] is not None:
-        #         lhand_root_pose_aa = hand_params["left"]["global_orient"].clone() 
+        #         lhand_root_pose_aa = hand_params["left"]["global_orient"].clone()
         #         lwrist_global_orient = batch_rodrigues(lhand_root_pose_aa)
         #         if rotation_matrix_angle_difference(lwrist_orig_rotmat, lwrist_global_orient) < math.pi / 2:
-        #             lhand_update_flag = True 
+        #             lhand_update_flag = True
         #             ### update position
         #             lwrist_joint_img = hand_params["left"]["joints_img"][0].unsqueeze(0)
         #             lwrist_joint_cam = lwrist_joint_img.clone()
@@ -135,14 +135,14 @@ class Model(nn.Module):
         #             full_body_rotmat[:, lwrist_pose_idx:(lwrist_pose_idx+1)] = lwrist_local_rotmat
         #             lhand_pose_aa = hand_params["left"]["hand_pose"].clone()
         #             lhand_pose = angle_axis_to_rotation_matrix(lhand_pose_aa.reshape(1, -1, 3))
-            
-        #     rhand_update_flag = False 
+
+        #     rhand_update_flag = False
         #     rwrist_joint_cam = rwrist_smplx_cam.clone()
         #     if hand_params["right"] is not None:
         #         rhand_root_pose_aa = hand_params["right"]["global_orient"].clone()
         #         rwrist_global_orient = batch_rodrigues(rhand_root_pose_aa)
         #         if rotation_matrix_angle_difference(rwrist_orig_rotmat, rwrist_global_orient) < math.pi / 2:
-        #             rhand_update_flag = True 
+        #             rhand_update_flag = True
         #             ### update position
         #             rwrist_joint_img = hand_params["right"]["joints_img"][0].unsqueeze(0)
         #             rwrist_joint_cam = rwrist_joint_img.clone()
@@ -151,13 +151,13 @@ class Model(nn.Module):
         #             rwrist_joint_cam[:, 2] = rwrist_smplx_cam[:, 2].clone()
         #             rwrist_joint_cam[:, 0] = (rwrist_joint_cam[:, 0] - self.cfg.model.princpt[0]) / self.cfg.model.focal[0] * (rwrist_joint_cam[:, 2] + 1e-4)
         #             rwrist_joint_cam[:, 1] = (rwrist_joint_cam[:, 1] - self.cfg.model.princpt[1]) / self.cfg.model.focal[1] * (rwrist_joint_cam[:, 2] + 1e-4)
-                
+
         #             ### update rotation
         #             rwrist_local_rotmat = torch.matmul(relbow_global_rotmat_inv, rwrist_global_orient)
         #             full_body_rotmat[:, rwrist_pose_idx:(rwrist_pose_idx+1) ] = rwrist_local_rotmat
         #             rhand_pose_aa = hand_params["right"]["hand_pose"].clone()
         #             rhand_pose = angle_axis_to_rotation_matrix(rhand_pose_aa.reshape(1, -1, 3))
-            
+
         #     smplest_joint_cam[:, lwrist_pose_idx] = lwrist_joint_cam.clone()
         #     smplest_joint_cam[:, rwrist_pose_idx] = rwrist_joint_cam.clone()
         #     ### only update body part
@@ -178,7 +178,7 @@ class Model(nn.Module):
         #     output = self.smplx_layer(betas=shape, body_pose=body_pose, global_orient=root_pose, right_hand_pose=rhand_pose,
         #                           transl=cam_trans, left_hand_pose=lhand_pose, jaw_pose=jaw_pose, leye_pose=zero_pose,
         #                           reye_pose=zero_pose, expression=expr, return_full_pose=True)
-        
+
         # camera-centered 3D coordinate
         mesh_cam = output.vertices
         if mode == 'test' and self.cfg.data.testset in ['AGORA_test', 'BEDLAM_test']:  # use 144 joints for AGORA evaluation
@@ -188,7 +188,7 @@ class Model(nn.Module):
 
         # # project 3D coordinates to 2D space
         joint_proj = self.proj_joints(joint_cam)
-        
+
         # root-relative 3D coordinates
         root_cam = joint_cam[:, self.smpl_x.root_joint_idx, None, :]
         joint_cam = joint_cam - root_cam
@@ -252,7 +252,7 @@ class Model(nn.Module):
                 16, 17, 18, 19], dtype=torch.int64)
             transforms_mat = item.clone()
             transform_chain = [transforms_mat[0].detach()] # pelvis
-            
+
             for i in range(1, parents.shape[0]):
                 # Subtract the joint location at the rest pose
                 # No need for rotation, since it's identity when at rest
@@ -275,7 +275,7 @@ class Model(nn.Module):
                 16, 17, 18, 19], dtype=torch.int64)
             transforms_mat = item.clone()
             transform_chain = [transforms_mat[0].detach()] # pelvis
-            
+
             for i in range(1, parents.shape[0]):
                 # Subtract the joint location at the rest pose
                 # No need for rotation, since it's identity when at rest
@@ -307,25 +307,25 @@ class Model(nn.Module):
 
         # convert predicted rot6d to aa (not unique convention may cause problem)
         root_pose_aa = rot6d_to_axis_angle(pred_mano_params['body_root_pose'])
-        body_pose_aa = rot6d_to_axis_angle(pred_mano_params['body_pose'].reshape(-1, 6)).reshape(pred_mano_params['body_pose'].shape[0], -1) 
-        
+        body_pose_aa = rot6d_to_axis_angle(pred_mano_params['body_pose'].reshape(-1, 6)).reshape(pred_mano_params['body_pose'].shape[0], -1)
+
         batch = root_pose_aa.shape[0]
         device = root_pose_aa.device
-        # convert predicted aa to rotmat 
+        # convert predicted aa to rotmat
         root_pose_rotmat = batch_rodrigues(root_pose_aa.reshape(-1, 3)).reshape(root_pose_aa.shape[0], -1)
-        body_pose_rotmat = batch_rodrigues(body_pose_aa.reshape(-1, 3)).reshape(body_pose_aa.shape[0], -1)  
+        body_pose_rotmat = batch_rodrigues(body_pose_aa.reshape(-1, 3)).reshape(body_pose_aa.shape[0], -1)
         full_body_rotmat = torch.cat((root_pose_rotmat, body_pose_rotmat), 1)
 
         face_root_pose = rot6d_to_axis_angle(pred_mano_params['face_root_pose'])
         face_jaw_pose_aa = rot6d_to_axis_angle(pred_mano_params['face_jaw_pose'])
         face_root_rotmat = batch_rodrigues(face_root_pose.reshape(-1, 3)).reshape(face_root_pose.shape[0], -1)
-        face_jaw_pose_rotmat = batch_rodrigues(face_jaw_pose_aa.reshape(-1, 3)).reshape(face_jaw_pose_aa.shape[0], -1)  
+        face_jaw_pose_rotmat = batch_rodrigues(face_jaw_pose_aa.reshape(-1, 3)).reshape(face_jaw_pose_aa.shape[0], -1)
 
         ##### original hand settings
-        self.smplx_layer.flat_hand_mean = False 
+        self.smplx_layer.flat_hand_mean = False
         lhand_root_pose_aa = rot6d_to_axis_angle(pred_mano_params['lhand_root_pose'])
         rhand_root_pose_aa = rot6d_to_axis_angle(pred_mano_params['rhand_root_pose'])
-        lhand_pose_aa= rot6d_to_axis_angle(pred_mano_params['lhand_pose'].reshape(-1, 6)).reshape(pred_mano_params['lhand_pose'].shape[0], -1)  
+        lhand_pose_aa= rot6d_to_axis_angle(pred_mano_params['lhand_pose'].reshape(-1, 6)).reshape(pred_mano_params['lhand_pose'].shape[0], -1)
         rhand_pose_aa= rot6d_to_axis_angle(pred_mano_params['rhand_pose'].reshape(-1, 6)).reshape(pred_mano_params['rhand_pose'].shape[0], -1)
         # Add the mean pose of the model. Does not affect the body, only the
         # hands when flat_hand_mean == False
@@ -335,18 +335,41 @@ class Model(nn.Module):
 
         lhand_root_pose_rotmat = batch_rodrigues(lhand_root_pose_aa.reshape(-1, 3)).reshape(lhand_root_pose_aa.shape[0], -1)
         rhand_root_pose_rotmat = batch_rodrigues(rhand_root_pose_aa.reshape(-1, 3)).reshape(rhand_root_pose_aa.shape[0], -1)
-        lhand_pose_rotmat = batch_rodrigues(lhand_pose_aa.reshape(-1, 3)).reshape(lhand_pose_aa.shape[0], -1) 
-        rhand_pose_rotmat = batch_rodrigues(rhand_pose_aa.reshape(-1, 3)).reshape(rhand_pose_aa.shape[0], -1)  
+        lhand_pose_rotmat = batch_rodrigues(lhand_pose_aa.reshape(-1, 3)).reshape(lhand_pose_aa.shape[0], -1)
+        rhand_pose_rotmat = batch_rodrigues(rhand_pose_aa.reshape(-1, 3)).reshape(rhand_pose_aa.shape[0], -1)
 
         pose = torch.cat((root_pose_rotmat, body_pose_rotmat, lhand_pose_rotmat, rhand_pose_rotmat, face_jaw_pose_rotmat), 1)
 
         # kps2d, kps3d and mesh output
-        joint_proj, joint_cam, joint_cam_wo_ra, mesh_cam, pred_root_cam, smplx_output = self.get_coord(root_pose_aa, body_pose_aa, lhand_pose_aa.reshape(batch, -1, 3), 
-                                                                            rhand_pose_aa.reshape(batch, -1, 3), face_jaw_pose_aa, 
-                                                                            pred_mano_params['body_betas'], 
-                                                                            pred_mano_params['face_expression'], 
+        joint_proj, joint_cam, joint_cam_wo_ra, mesh_cam, pred_root_cam, smplx_output = self.get_coord(root_pose_aa, body_pose_aa, lhand_pose_aa.reshape(batch, -1, 3),
+                                                                            rhand_pose_aa.reshape(batch, -1, 3), face_jaw_pose_aa,
+                                                                            pred_mano_params['body_betas'],
+                                                                            pred_mano_params['face_expression'],
                                                                             body_trans, mode)
-        
+
+        out = {}
+        out['img'] = inputs['img']
+        # out['full_verts'] = full_verts
+        out['smplx_joint_proj'] = joint_proj
+        out['smplx_mesh_cam'] = mesh_cam
+        out['smplx_root_pose'] = root_pose_aa
+        out['smplx_body_pose'] = body_pose_aa
+        out['smplx_lhand_pose'] = lhand_pose_aa
+        out['smplx_rhand_pose'] = rhand_pose_aa
+        out['smplx_jaw_pose'] = face_jaw_pose_aa
+        out['smplx_shape'] = pred_mano_params['body_betas']
+        out['smplx_expr'] = pred_mano_params['face_expression']
+        out['cam_trans'] = body_trans
+        out['smplx_joint_cam'] = joint_cam_wo_ra # for bedlam test
+        out['smplx_root_cam'] = pred_root_cam
+        # out['smplx_output'] = smplx_output
+
+        print('forward 0')
+        print(out)
+        print('forward 1')
+        print(smplx_output)
+        return out, smplx_output
+
 
         if mode == 'train':
             loss = {}
@@ -361,48 +384,48 @@ class Model(nn.Module):
 
             ### pose loss ###
             targets['smplx_pose_rotmat'] = batch_rodrigues(targets['smplx_pose'].reshape(-1,3)).reshape(
-                                                                    targets['smplx_pose'].shape[0], -1) 
-           
+                                                                    targets['smplx_pose'].shape[0], -1)
+
             # do not supervise root pose if original agora json is used
-            loss['smplx_orient'] = self.param_loss(pose, targets['smplx_pose_rotmat'], 
+            loss['smplx_orient'] = self.param_loss(pose, targets['smplx_pose_rotmat'],
                                                 meta_info['smplx_pose_valid'])[:, :9] * smplx_orient_weight
-            loss['smplx_pose'] = self.param_loss(pose, targets['smplx_pose_rotmat'], 
+            loss['smplx_pose'] = self.param_loss(pose, targets['smplx_pose_rotmat'],
                                                 meta_info['smplx_pose_valid']) * smplx_pose_weight
             ### shape loss ###
             loss['smplx_shape'] = self.param_loss(pred_mano_params['body_betas'], targets['smplx_shape'],
-                                                  meta_info['smplx_shape_valid'][:, None]) * smplx_shape_weight 
+                                                  meta_info['smplx_shape_valid'][:, None]) * smplx_shape_weight
             ### expression loss ###
-            loss['smplx_expr'] = self.param_loss(pred_mano_params['face_expression'], targets['smplx_expr'], 
+            loss['smplx_expr'] = self.param_loss(pred_mano_params['face_expression'], targets['smplx_expr'],
                                                 meta_info['smplx_expr_valid'][:, None])
 
             ### keypoints3d wo/ ra loss ###
-            meta_info['root_valid'] = meta_info['smplx_pose_valid'][:, 0] != 0 
-            
+            meta_info['root_valid'] = meta_info['smplx_pose_valid'][:, 0] != 0
+
             hand_index = list(self.smpl_x.joint_part['lhand']) + list(self.smpl_x.joint_part['rhand'])
-            
-            
+
+
             # if root orientation not given, ignore loss wo/ ra, only for full-body dataset
-            loss['joint_cam'] = self.coord_loss(joint_cam_wo_ra, targets['joint_cam'], 
+            loss['joint_cam'] = self.coord_loss(joint_cam_wo_ra, targets['joint_cam'],
                                     meta_info['joint_trunc'] * meta_info['is_3D'][:, None, None]* meta_info['joint_trunc'][:,0, :][:, None]) * smplx_kps_3d_weight
 
             if getattr(self.cfg.train, 'hand_loss', False):
                 ### 3d hand kps loss wo/ ra for hand alignment, only for full-body datset
-                loss['hand_align'] = self.coord_loss(joint_cam_wo_ra[:, hand_index, :], targets['joint_cam'][:, hand_index, :], 
+                loss['hand_align'] = self.coord_loss(joint_cam_wo_ra[:, hand_index, :], targets['joint_cam'][:, hand_index, :],
                                     meta_info['joint_trunc'][:, hand_index, :] * meta_info['is_3D'][:, None, None]* meta_info['joint_trunc'][:,0, :][:, None]) * smplx_hand_kps_3d_weight
 
             ### keypoints3d w/ ra loss ###
-            loss['smplx_joint_cam'] = self.coord_loss(joint_cam, targets['smplx_joint_cam'], 
+            loss['smplx_joint_cam'] = self.coord_loss(joint_cam, targets['smplx_joint_cam'],
                                     meta_info['joint_trunc']) * smplx_kps_3d_weight
 
             if getattr(self.cfg.train, 'hand_loss', False):
                 ### 3d hand kps loss w/ ra for hand pose
-                loss['hand_pose'] = self.coord_loss(joint_cam[:, hand_index, :], targets['smplx_joint_cam'][:, hand_index, :], 
+                loss['hand_pose'] = self.coord_loss(joint_cam[:, hand_index, :], targets['smplx_joint_cam'][:, hand_index, :],
                                    meta_info['joint_trunc'][:, hand_index, :]) * smplx_hand_kps_3d_weight
 
             ### keypoints2d loss ###
-            loss['joint_proj'] = self.coord_loss(joint_proj[..., :2], targets['joint_img'][:, :, :2], 
+            loss['joint_proj'] = self.coord_loss(joint_proj[..., :2], targets['joint_img'][:, :, :2],
                                             meta_info['joint_trunc']) * smplx_kps_2d_weight
-            
+
             ### hand and face consistency loss, part global orientation loss ###
             # meta_info['root_valid'] = meta_info['smplx_pose_valid'][:, 0] != 0
             # hand pose validity
@@ -412,18 +435,18 @@ class Model(nn.Module):
             rhand_thumb_id = self.smpl_x.orig_joints_name.index('R_Thumb_1')
 
             # pred_pelvis -> pred_hand global orientation
-            lhand_root_rotmat_chain = self.batch_hand_global_rotation(full_body_rotmat.view(full_body_rotmat.shape[0], -1, 3, 3), 
+            lhand_root_rotmat_chain = self.batch_hand_global_rotation(full_body_rotmat.view(full_body_rotmat.shape[0], -1, 3, 3),
                                                                 lwrist_pose_idx).view(-1, 9)
-            rhand_root_rotmat_chain = self.batch_hand_global_rotation(full_body_rotmat.view(full_body_rotmat.shape[0], -1, 3, 3), 
+            rhand_root_rotmat_chain = self.batch_hand_global_rotation(full_body_rotmat.view(full_body_rotmat.shape[0], -1, 3, 3),
                                                                 rwrist_pose_idx).view(-1, 9)
 
             # -->full body dataset <--
             # gt_pelvis -> gt_hand global orientation, for full-body dataset
-            lhand_root_pose_rotmat_chain_gt = self.batch_hand_global_rotation(targets['smplx_pose_rotmat'].view(targets['smplx_pose_rotmat'].shape[0], -1, 3, 3)[:, :22, ...], 
+            lhand_root_pose_rotmat_chain_gt = self.batch_hand_global_rotation(targets['smplx_pose_rotmat'].view(targets['smplx_pose_rotmat'].shape[0], -1, 3, 3)[:, :22, ...],
                                                                 lwrist_pose_idx).view(-1, 9)
             rhand_root_pose_rotmat_chain_gt = self.batch_hand_global_rotation(targets['smplx_pose_rotmat'].view(targets['smplx_pose_rotmat'].shape[0], -1, 3, 3)[:, :22, ...],
                                                                 rwrist_pose_idx).view(-1, 9)
-            
+
             lhand_valid = meta_info['smplx_pose_valid'].view(meta_info['smplx_pose_valid'].shape[0], -1, 9)[:, lwrist_pose_idx]
             rhand_valid = meta_info['smplx_pose_valid'].view(meta_info['smplx_pose_valid'].shape[0], -1, 9)[:, rwrist_pose_idx]
 
@@ -442,7 +465,7 @@ class Model(nn.Module):
             lhand_valid = meta_info['smplx_pose_valid'].view(meta_info['smplx_pose_valid'].shape[0], -1, 9)[:, lhand_thumb_id]
             rhand_valid = meta_info['smplx_pose_valid'].view(meta_info['smplx_pose_valid'].shape[0], -1, 9)[:, rhand_thumb_id]
 
-            targets['lhand_root_rotmat'] = batch_rodrigues(targets['lhand_root'].reshape(-1,3)).reshape(targets['lhand_root'].shape[0], -1) 
+            targets['lhand_root_rotmat'] = batch_rodrigues(targets['lhand_root'].reshape(-1,3)).reshape(targets['lhand_root'].shape[0], -1)
             targets['rhand_root_rotmat'] = batch_rodrigues(targets['rhand_root'].reshape(-1,3)).reshape(targets['rhand_root'].shape[0], -1)
             # MANO gt_hand global orientation VS pred hand global orientation
             lhand_root_loss = self.param_loss(targets['lhand_root_rotmat'], lhand_root_pose_rotmat, lhand_valid) * (1 - meta_info['joint_trunc'][:,0, :][:, None])
@@ -454,7 +477,7 @@ class Model(nn.Module):
                 lhand_root_loss_chain = self.param_loss(targets['lhand_root_rotmat'], lhand_root_rotmat_chain, lhand_valid) * (1 - meta_info['joint_trunc'][:,0, :][:, None])
                 rhand_root_loss_chain = self.param_loss(targets['rhand_root_rotmat'], rhand_root_rotmat_chain, rhand_valid) * (1 - meta_info['joint_trunc'][:,0, :][:, None])
                 loss['hand_root_chain'] += (lhand_root_loss_chain + rhand_root_loss_chain) * hand_root_weight
-        
+
             return loss
 
         else:
@@ -503,8 +526,12 @@ class Model(nn.Module):
             if 'img_id' in meta_info:
                 out['img_id'] = meta_info['img_id']
 
+            print('out')
+            print(out)
+            print('##############3333')
+
             return out
-    
+
     def get_joints_visibility(self, smplx_output, faces, points_visibility):
         joints_cam = smplx_output.joints.clone()
         joints_img = self.proj_joints(joints_cam)
@@ -515,28 +542,28 @@ class Model(nn.Module):
         faces_np = faces.cpu().detach().numpy()[0].astype(np.int32)
         cam_np = np.zeros(3, dtype=np.float32)
         verts_visibility = points_visibility.astype(np.bool)
-        
+
         _skinning_weights = self.smplx_layer.lbs_weights.clone()
         num_verts, _ = _skinning_weights.size()
         num_joints = joints_cam_np.shape[0]
-        
+
         dominant_joints = torch.argmax(_skinning_weights[:, :num_joints], dim=1)
         regions = np.zeros((num_joints, num_verts), dtype=np.bool)
         weights = np.zeros((num_joints, num_verts), dtype=np.float32)
 
         for i, joint_id in enumerate(dominant_joints):
-            joint_id = joint_id.item() 
-            regions[joint_id][i] = True 
+            joint_id = joint_id.item()
+            regions[joint_id][i] = True
             weights[joint_id][i] = _skinning_weights[i][joint_id]
 
         joints_conf = get_vis.get_joint_conf(
-            joints_cam_np[:num_joints], cam_np, 
+            joints_cam_np[:num_joints], cam_np,
             verts_np, faces_np, verts_visibility, regions, weights)
         joints_conf = np.pad(joints_conf, pad_width=(0, all_num_joints - num_joints), mode='constant', constant_values=0)
-        
+
         joints_img_np = joints_img.cpu().detach().float().numpy()[0]
         joints_img_np = np.concatenate((joints_img_np, joints_conf[..., None]), axis=1)
-        return joints_img_np 
+        return joints_img_np
 
 def get_model(cfg, mode):
 
@@ -546,7 +573,7 @@ def get_model(cfg, mode):
         encoder.load_state_dict(encoder_pretrained_model, strict=False)
         print(f"Initialized encoder from {cfg.model.encoder_pretrained_model_path}")
 
-    decoder = TransformerDecoderHead(**cfg.model.decoder_config) 
+    decoder = TransformerDecoderHead(**cfg.model.decoder_config)
 
     model = Model(cfg, encoder, decoder)
     return model

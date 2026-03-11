@@ -54,7 +54,7 @@ def main():
   from sam2.build_sam import build_sam2_video_predictor
 
   main_path = '/'.join(sys.path[0].split('/')[:-2]) + '/'
-  resources_path = os.path.join(main_path, 'mka')
+  resources_path = os.path.join(main_path, 'resources')
   calibs_path   = os.path.join(resources_path, 'calibs')
   sessions_path = os.path.join(resources_path, 'sessions')
   out_path = os.path.join(resources_path, 'sam_results')

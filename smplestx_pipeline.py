@@ -51,7 +51,7 @@ def main():
   device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
   main_path = '/'.join(sys.path[0].split('/')[:-2]) + '/'
-  resources_path = os.path.join(main_path, 'mka')
+  resources_path = os.path.join(main_path, 'resources')
   calibs_path   = os.path.join(resources_path, 'calibs')
   sessions_path = os.path.join(resources_path, 'sessions')
   out_path = os.path.join(resources_path, 'smplestx_results')
@@ -116,6 +116,9 @@ def main():
       vid_paths = [v for v in vid_paths if not ('E1.mp4' in v or 'E2.mp4' in v)]
       for vid_path in vid_paths:
         video_name = Path(vid_path).stem
+        K = cam_dict[video_name]['K']
+        cfg.model.focal = [K[0, 0], K[1, 1]]
+        cfg.model.princpt = [K[0, 2], K[1, 2]]
 
         cap = cv.VideoCapture(vid_path)
         fps = int(cap.get(cv.CAP_PROP_FPS))
@@ -206,6 +209,11 @@ def main():
           # mesh recovery
           with torch.no_grad():
             out = demoer.model(inputs, targets, meta_info, 'test')
+
+          print('out 0')
+          print(out[0])
+          print('out 1')
+          print(out[1])
 
           smplx_output = out["smplx_output"]
           mesh_cam = out["smplx_mesh_cam"]
