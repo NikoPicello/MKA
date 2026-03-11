@@ -127,26 +127,32 @@ def main():
           box=np.array(bbox_prompt_a, dtype=np.float32),
         )
 
-        video_segments = {}  # video_segments contains the per-frame segmentation results
-        for out_frame_idx, out_obj_ids, out_mask_logits in sam2.propagate_in_video(inference_state):
-          video_segments[out_frame_idx] = {
-            out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
-            for i, out_obj_id in enumerate(out_obj_ids)
-          }
+        # video_segments = {}  # video_segments contains the per-frame segmentation results
+        # for out_frame_idx, out_obj_ids, out_mask_logits in sam2.propagate_in_video(inference_state):
+        #   video_segments[out_frame_idx] = {
+        #     out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
+        #     for i, out_obj_id in enumerate(out_obj_ids)
+        #   }
 
         sam2.reset_state(inference_state)
         del inference_state
         torch.cuda.empty_cache()
 
         cap = cv.VideoCapture(vid_path)
-        for out_frame_idx in trange(len(video_segments)):
+        for out_frame_idx, out_obj_ids out_mask_logits in sam2.propagate_in_video(inference_state):
           ret, image_np = cap.read()
           image_np = cv.cvtColor(image_np, cv.COLOR_BGR2RGB)
           seg_mask = np.zeros(image_np.shape[:2], dtype=np.uint8)
           overlayed = image_np.copy()
 
+          curr_segment = {
+            out_obj_id: (out_mask_logits[i] > 0.0).cpu().numpy()
+            for i, out_obj_id in enumerate(out_obj_ids)
+          }
+
           # Overlay mask(s)
-          for out_obj_id, out_mask in video_segments[out_frame_idx].items():
+          # for out_obj_id, out_maks in video_segments[out_frame_idx].items():
+          for out_obj_id, out_mask in curr_segment.items():
             mask = np.squeeze(out_mask).astype(bool)
 
             # --- 1. Update seg mask (binary: 0/1) ---
@@ -172,7 +178,7 @@ def main():
         cap.release()
         writer.close()
 
-        del video_segments
+        # del video_segments
         gc.collect()
         torch.cuda.empty_cache()
 

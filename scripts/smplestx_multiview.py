@@ -24,9 +24,9 @@ from utils.inference_utils import non_max_suppression
 from utils.transforms import world2cam, cam2pixel, rigid_align
 from pycocotools.coco import COCO
 import copy
-from time import time 
-import json 
-import imageio 
+from time import time
+import json
+import imageio
 
 
 joint_set = {
@@ -45,14 +45,14 @@ def options():
     parser.add_argument("--out_dir", type=str, required=True)
     parser.add_argument("--skip", action='store_true')
     args = parser.parse_args()
-    return args 
+    return args
 
 
 def main():
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     args = options()
     in_root = args.video_dir
-    out_root = args.out_dir 
+    out_root = args.out_dir
     os.makedirs(out_root , exist_ok=True)
 
     # init config
@@ -62,7 +62,7 @@ def main():
     config_path = osp.join('./configs', f'config_{ckpt_name}.py')
     cfg = Config.load_config(config_path)
     checkpoint_path = osp.join('./pretrained_models', ckpt_name, f'{ckpt_name}.pth.tar')
-    
+
     time_str = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     exp_name = f'inference_human36m_{ckpt_name}_{time_str}'
 
@@ -74,12 +74,12 @@ def main():
         },
         "log":{
             'exp_name':  exp_name,
-            'log_dir': osp.join(out_root, 'outputs', exp_name, 'log'),  
+            'log_dir': osp.join(out_root, 'outputs', exp_name, 'log'),
             }
     }
     cfg.update_config(new_config)
     cfg.prepare_log()
-    
+
     # init human models
     smpl_x = SMPLX(cfg.model.human_model_path)
     faces_tensor = torch.from_numpy(smpl_x.face.astype(np.int32)).unsqueeze(0).to(device)
@@ -91,7 +91,7 @@ def main():
     demoer._make_model()
 
     # init detector
-    bbox_model = getattr(cfg.inference.detection, "model_path", 
+    bbox_model = getattr(cfg.inference.detection, "model_path",
                         './pretrained_models/yolov8x.pt')
     detector = YOLO(bbox_model)
 
@@ -102,7 +102,7 @@ def main():
         out_npy_path = os.path.join(out_root, f"{video_name}_res.npy")
         if args.skip and os.path.exists(out_npy_path):
             print(f"=== skip {out_npy_path}", flush=True)
-            continue 
+            continue
 
         video_path = os.path.join(in_root, video_fn)
         cap = cv2.VideoCapture(video_path)
@@ -111,10 +111,10 @@ def main():
         frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         rasterizer = get_rasterizer(frame_height, frame_width)
-        
+
         out_video_path = os.path.join(out_root, f"{video_name}_render.mp4")
         writer = imageio.get_writer(
-            out_video_path, 
+            out_video_path,
             fps=fps, mode='I', format='FFMPEG', macro_block_size=1
         )
 
@@ -122,11 +122,11 @@ def main():
         for fidx in trange(total_frames):
             ret, frame = cap.read()
             if not ret:
-                break 
+                break
 
             out_frame_dict = {
                 "fidx": fidx,
-            } 
+            }
             transform = transforms.ToTensor()
             img_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -134,11 +134,11 @@ def main():
             vis_img = original_img.copy()
             original_img_height, original_img_width = original_img.shape[:2]
             # detection, xyxy
-            yolo_bbox = detector.predict(original_img, 
-                                    device='cuda', 
-                                    classes=00, 
-                                    conf=cfg.inference.detection.conf, 
-                                    save=cfg.inference.detection.save, 
+            yolo_bbox = detector.predict(original_img,
+                                    device='cuda',
+                                    classes=00,
+                                    conf=cfg.inference.detection.conf,
+                                    save=cfg.inference.detection.save,
                                     verbose=cfg.inference.detection.verbose
                                         )[0].boxes.xyxy.detach().cpu().numpy()
 
@@ -146,46 +146,46 @@ def main():
                 # save original image if no bbox
                 num_bbox = 0
                 writer.append_data(vis_img.astype(np.uint8))
-                
+
                 out_results.append(out_frame_dict)
                 print("=== failed", fidx, flush=True)
-                continue 
-            
-            #### only focus on max bbox 
+                continue
+
+            #### only focus on max bbox
             num_bbox = len(yolo_bbox)
             if num_bbox > 1:
                 bbox_id = np.argmax(abs(yolo_bbox[:, 2] - yolo_bbox[:, 0]) * abs(yolo_bbox[:, 3] - yolo_bbox[:, 1]))
             else:
-                bbox_id = 0            
-            
+                bbox_id = 0
+
             yolo_bbox_xywh = np.zeros((4))
             yolo_bbox_xywh[0] = yolo_bbox[bbox_id][0]
             yolo_bbox_xywh[1] = yolo_bbox[bbox_id][1]
             yolo_bbox_xywh[2] = abs(yolo_bbox[bbox_id][2] - yolo_bbox[bbox_id][0])
             yolo_bbox_xywh[3] = abs(yolo_bbox[bbox_id][3] - yolo_bbox[bbox_id][1])
-            
-            # xywh
-            bbox = process_bbox(bbox=yolo_bbox_xywh, 
-                                img_width=original_img_width, 
-                                img_height=original_img_height, 
-                                input_img_shape=cfg.model.input_img_shape, 
-                                ratio=getattr(cfg.data, "bbox_ratio", 1.25)) 
 
-            focal = [cfg.model.focal[0] / cfg.model.input_body_shape[1] * bbox[2], 
+            # xywh
+            bbox = process_bbox(bbox=yolo_bbox_xywh,
+                                img_width=original_img_width,
+                                img_height=original_img_height,
+                                input_img_shape=cfg.model.input_img_shape,
+                                ratio=getattr(cfg.data, "bbox_ratio", 1.25))
+
+            focal = [cfg.model.focal[0] / cfg.model.input_body_shape[1] * bbox[2],
                     cfg.model.focal[1] / cfg.model.input_body_shape[0] * bbox[3]]
-            princpt = [cfg.model.princpt[0] / cfg.model.input_body_shape[1] * bbox[2] + bbox[0], 
+            princpt = [cfg.model.princpt[0] / cfg.model.input_body_shape[1] * bbox[2] + bbox[0],
                     cfg.model.princpt[1] / cfg.model.input_body_shape[0] * bbox[3] + bbox[1]]
 
             out_frame_dict["focal"] = focal
             out_frame_dict["princpt"] = princpt
 
-            img, _, _ = generate_patch_image(cvimg=original_img, 
-                                                bbox=bbox, 
-                                                scale=1.0, 
-                                                rot=0.0, 
-                                                do_flip=False, 
+            img, _, _ = generate_patch_image(cvimg=original_img,
+                                                bbox=bbox,
+                                                scale=1.0,
+                                                rot=0.0,
+                                                do_flip=False,
                                                 out_shape=cfg.model.input_img_shape)
-                
+
             img = transform(img.astype(np.float32))/255
             img = img.cuda()[None,:,:,:]
             inputs = {'img': img}
@@ -201,12 +201,12 @@ def main():
             mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
 
             # generate confidence based on visibility
-            points_visibility = check_visibility_pt3d(rasterizer, vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt})   
+            points_visibility = check_visibility_pt3d(rasterizer, vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt})
             new_joints_img = demoer.model.module.get_joints_visibility(smplx_output, faces_tensor, points_visibility)
             new_joints_img[:, 0] = new_joints_img[:, 0] * bbox[2] / cfg.model.output_hm_shape[2] + bbox[0]
             new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
-            out_frame_dict["kpt2d"] = new_joints_img 
+            out_frame_dict["kpt2d"] = new_joints_img
             out_frame_dict["betas"] = smplx_output.betas[0].cpu().detach().float().numpy()
             out_frame_dict["expression"] = smplx_output.expression[0].cpu().detach().float().numpy()
             out_frame_dict["full_pose"] = smplx_output.full_pose[0].cpu().detach().float().numpy()
@@ -215,10 +215,10 @@ def main():
 
             vis_img = render_mesh_pt3d(vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt}, rasterizer)
             writer.append_data(vis_img.astype(np.uint8))
-        
+
         cap.release()
         writer.close()
-        
+
         np.save(out_npy_path, out_results)
 
 
