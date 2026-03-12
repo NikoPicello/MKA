@@ -364,11 +364,11 @@ class Model(nn.Module):
         out['smplx_root_cam'] = pred_root_cam
         # out['smplx_output'] = smplx_output
 
-        print('forward 0')
-        print(out)
-        print('forward 1')
-        print(smplx_output)
-        return out, smplx_output
+        # print('forward 0')
+        # print(out)
+        # print('forward 1')
+        # print(smplx_output)
+        return out, {'vertices' : smplx_output.vertices, 'joints' : smplx_output.joints, 'full_pose' : smplx_output.full_pose, 'global_orient' : smplx_output.global_orient, 'transl' : smplx_output.transl, 'vshaped' : smplx_output.v_shaped, 'betas' : smplx_output.betas, 'body_pose' : smplx_output.body_pose, 'left_hand_pose' : smplx_output.left_hand_pose, 'right_hand_pose' : smplx_output.right_hand_pose, 'expression' : smplx_output.expression, 'jaw_pose' : smplx_output.jaw_pose}
 
 
         if mode == 'train':
@@ -533,22 +533,24 @@ class Model(nn.Module):
             return out
 
     def get_joints_visibility(self, smplx_output, faces, points_visibility):
-        joints_cam = smplx_output.joints.clone()
+        # joints_cam = smplx_output.joints.clone()
+        joints_cam = smplx_output['joints'].clone()
         joints_img = self.proj_joints(joints_cam)
 
         joints_cam_np = joints_cam.cpu().detach().float().numpy()[0]
         all_num_joints = joints_cam_np.shape[0]
-        verts_np = smplx_output.vertices.cpu().detach().float().numpy()[0]
+        # verts_np = smplx_output.vertices.cpu().detach().float().numpy()[0]
+        verts_np = smplx_output['vertices'].cpu().detach().float().numpy()[0]
         faces_np = faces.cpu().detach().numpy()[0].astype(np.int32)
         cam_np = np.zeros(3, dtype=np.float32)
-        verts_visibility = points_visibility.astype(np.bool)
+        verts_visibility = points_visibility.astype(bool)
 
         _skinning_weights = self.smplx_layer.lbs_weights.clone()
         num_verts, _ = _skinning_weights.size()
         num_joints = joints_cam_np.shape[0]
 
         dominant_joints = torch.argmax(_skinning_weights[:, :num_joints], dim=1)
-        regions = np.zeros((num_joints, num_verts), dtype=np.bool)
+        regions = np.zeros((num_joints, num_verts), dtype=bool)
         weights = np.zeros((num_joints, num_verts), dtype=np.float32)
 
         for i, joint_id in enumerate(dominant_joints):

@@ -117,8 +117,8 @@ def main():
       for vid_path in vid_paths:
         video_name = Path(vid_path).stem
         K = cam_dict[video_name]['K']
-        cfg.model.focal = [K[0, 0], K[1, 1]]
-        cfg.model.princpt = [K[0, 2], K[1, 2]]
+        # cfg.model.focal = [K[0, 0], K[1, 1]]
+        # cfg.model.princpt = [K[0, 2], K[1, 2]]
 
         cap = cv.VideoCapture(vid_path)
         fps = int(cap.get(cv.CAP_PROP_FPS))
@@ -128,6 +128,7 @@ def main():
         rasterizer = get_rasterizer(frame_height, frame_width)
 
         out_vid_path = os.path.join(out_path, f"{video_name}_render.mp4")
+        out_npy_path = os.path.join(out_path, f"{video_name}_res.npy")
         writer = imageio.get_writer(
             out_vid_path,
             fps=fps, mode='I', format='FFMPEG', macro_block_size=1
@@ -149,7 +150,7 @@ def main():
           original_img_height, original_img_width = original_img.shape[:2]
           # detection, xyxy
           yolo_bbox = detector.predict(original_img,
-                                      device='cuda',
+                                      device='cuda:3',
                                       classes=00,
                                       conf=cfg.inference.detection.conf,
                                       save=cfg.inference.detection.save,
@@ -208,14 +209,14 @@ def main():
 
           # mesh recovery
           with torch.no_grad():
-            out = demoer.model(inputs, targets, meta_info, 'test')
+            out, smplx_output = demoer.model(inputs, targets, meta_info, 'test')
 
-          print('out 0')
-          print(out[0])
-          print('out 1')
-          print(out[1])
+          # print('out 0')
+          # print(out[0])
+          # print('out 1')
+          # print(out[1])
 
-          smplx_output = out["smplx_output"]
+          # smplx_output = out["smplx_output"]
           mesh_cam = out["smplx_mesh_cam"]
           mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
 
@@ -226,11 +227,18 @@ def main():
           new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
           out_frame_dict["kpt2d"] = new_joints_img
-          out_frame_dict["betas"] = smplx_output.betas[0].cpu().detach().float().numpy()
-          out_frame_dict["expression"] = smplx_output.expression[0].cpu().detach().float().numpy()
+          # out_frame_dict["betas"] = smplx_output.betas[0].cpu().detach().float().numpy()
+          # out_frame_dict["expression"] = smplx_output.expression[0].cpu().detach().float().numpy()
 
-          out_frame_dict["full_pose"] = smplx_output.full_pose[0].cpu().detach().float().numpy()
-          out_frame_dict["transl"] = smplx_output.transl[0].cpu().detach().float().numpy()
+          # out_frame_dict["full_pose"] = smplx_output.full_pose[0].cpu().detach().float().numpy()
+          # out_frame_dict["transl"] = smplx_output.transl[0].cpu().detach().float().numpy()
+          out_frame_dict["betas"] = smplx_output['betas'][0].cpu().detach().float().numpy()
+          out_frame_dict["expression"] = smplx_output['expression'][0].cpu().detach().float().numpy()
+
+          out_frame_dict["full_pose"] = smplx_output['full_pose'][0].cpu().detach().float().numpy()
+          out_frame_dict["transl"] = smplx_output['transl'][0].cpu().detach().float().numpy()
+
+
           out_results.append(out_frame_dict)
 
           vis_img = render_mesh_pt3d(vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt}, rasterizer)
