@@ -27,6 +27,7 @@ from time import time
 from pathlib import Path
 import json
 import imageio
+import time
 
 joint_set = {
   'joint_num': 17,
@@ -208,8 +209,10 @@ def main():
           meta_info = {}
 
           # mesh recovery
+          start = time.time()
           with torch.no_grad():
             out, smplx_output = demoer.model(inputs, targets, meta_info, 'test')
+          print(time.time() - start)
 
           # print('out 0')
           # print(out[0])
