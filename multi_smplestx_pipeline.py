@@ -230,6 +230,7 @@ def main():
   for sid_path in sid_paths:
     with open(os.path.join(sid_path, 'session_data.txt')) as f:
       lines = f.readlines()
+      session_date = lines[0][5:].strip()
       calib_date = lines[1][11:].strip()
     curr_calib_path = os.path.join(calibs_path, calib_date)
     cam_calibs = glob.glob(curr_calib_path + '/*')
@@ -260,8 +261,10 @@ def main():
         frame_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
         rasterizer = get_rasterizer(frame_height, frame_width)
 
-        out_vid_path = os.path.join(out_path, f"{video_name}_render.mp4")
-        out_npy_path = os.path.join(out_path, f"{video_name}_res.npy")
+        curr_out_path = os.path.join(out_path, f"{session_date}/{video_name}")
+        os.makedirs(curr_out_path, exists_ok=True)
+        out_vid_path = os.path.join(curr_out_path, f"{video_name}_render.mp4")
+        out_npy_path = os.path.join(curr_out_path, f"{video_name}_res.npy")
         writer = imageio.get_writer(
             out_vid_path,
             fps=fps, mode='I', format='FFMPEG', macro_block_size=1
