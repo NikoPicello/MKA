@@ -567,6 +567,15 @@ class Model(nn.Module):
         joints_img_np = np.concatenate((joints_img_np, joints_conf[..., None]), axis=1)
         return joints_img_np
 
+    def not_get_joints_visibility(self, smplx_output):
+        joints_cam = smplx_output['joints'].clone()
+        joints_img = self.proj_joints(joints_cam)
+        joints_img_np = joints_img.cpu().detach().float().numpy()[0]
+        # Assume all joints visible (conf=1)
+        num_joints = joints_img_np.shape[0]
+        conf = np.ones((num_joints, 1), dtype=np.float32)
+        return np.concatenate((joints_img_np, conf), axis=1)
+
 def get_model(cfg, mode):
 
     encoder = ViT(**cfg.model.encoder_config)

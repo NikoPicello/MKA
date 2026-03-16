@@ -9,8 +9,9 @@ import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import pyrender
 import trimesh
+import time
 
-import torch 
+import torch
 # from pytorch3d.renderer.mesh import TexturesVertex
 from pytorch3d.structures import Meshes
 from pytorch3d.renderer import (
@@ -122,7 +123,7 @@ def vis_3d_skeleton(kpt_3d, kpt_3d_vis, kps_lines, filename=None):
     x_r = np.array([0, cfg.input_shape[1]], dtype=np.float32)
     y_r = np.array([0, cfg.input_shape[0]], dtype=np.float32)
     z_r = np.array([0, 1], dtype=np.float32)
-    
+
     if filename is None:
         ax.set_title('3D vis')
     else:
@@ -141,7 +142,7 @@ def save_obj(v, f, file_name='output.obj'):
     for i in range(len(v)):
         obj_file.write('v ' + str(v[i][0]) + ' ' + str(v[i][1]) + ' ' + str(v[i][2]) + '\n')
     for i in range(len(f)):
-        obj_file.write('f ' + str(f[i][0]+1) + ' ' + str(f[i][1]+1) + ' ' + str(f[i][2]+1) + '\n') 
+        obj_file.write('f ' + str(f[i][0]+1) + ' ' + str(f[i][1]+1) + ' ' + str(f[i][2]+1) + '\n')
     obj_file.close()
 
 def perspective_projection(vertices, cam_param):
@@ -166,7 +167,7 @@ def render_mesh(img, vertices, faces, cam_param, mesh_as_vertices=False):
                                     [0, -1, 0, 0],
                                     [0, 0, -1, 0],
                                     [0, 0, 0, 1]])
-        
+
 
         # render material
         base_color = (1.0, 193/255, 193/255, 1.0)
@@ -174,15 +175,15 @@ def render_mesh(img, vertices, faces, cam_param, mesh_as_vertices=False):
                 metallicFactor=0,
                 alphaMode='OPAQUE',
                 baseColorFactor=base_color)
-        
+
         material_new = pyrender.MetallicRoughnessMaterial(
                 metallicFactor=0.1,
                 roughnessFactor=0.4,
                 alphaMode='OPAQUE',
                 emissiveFactor=(0.2, 0.2, 0.2),
-                baseColorFactor=(0.7, 0.7, 0.7, 1))  
+                baseColorFactor=(0.7, 0.7, 0.7, 1))
         material = material_new
-        
+
         # get body mesh
         body_trimesh = trimesh.Trimesh(vertices, faces, process=False)
         body_mesh = pyrender.Mesh.from_trimesh(body_trimesh, material=material)
@@ -190,7 +191,7 @@ def render_mesh(img, vertices, faces, cam_param, mesh_as_vertices=False):
         # prepare camera and light
         light = pyrender.DirectionalLight(color=np.ones(3), intensity=2.0)
         cam_pose = pyrender2opencv @ np.eye(4)
-        
+
         # build scene
         scene = pyrender.Scene(bg_color=[0.0, 0.0, 0.0, 0.0],
                                         ambient_light=(0.3, 0.3, 0.3))
@@ -202,7 +203,7 @@ def render_mesh(img, vertices, faces, cam_param, mesh_as_vertices=False):
         r = pyrender.OffscreenRenderer(viewport_width=img.shape[1],
                                         viewport_height=img.shape[0],
                                         point_size=1.0)
-        
+
         color, _ = r.render(scene, flags=pyrender.RenderFlags.RGBA)
         color = color.astype(np.float32) / 255.0
         alpha = 0.8 # set transparency in [0.0, 1.0]
@@ -243,22 +244,22 @@ def render_mesh_pt3d(img, verts, faces, cam_param, rasterizer=None):
     cameras = PerspectiveCameras(R=R_pt, T=tvec_pt, focal_length=focal_pt, principal_point=p0_pt, image_size=image_size, device=device)
 
     blend_params = BlendParams(background_color=(1.0, 1.0, 1.0))
-    if rasterizer is None: 
+    if rasterizer is None:
         raster_settings = RasterizationSettings(
-            image_size=(img_h, img_w), 
-            blur_radius=0.0, 
-            faces_per_pixel=1, 
-            bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
-            max_faces_per_bin = None  # this setting is for coarse rasterization
+            image_size=(img_h, img_w),
+            blur_radius=0.0,
+            faces_per_pixel=1,
+            # bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
+            # max_faces_per_bin = None  # this setting is for coarse rasterization
         )
         rasterizer=MeshRasterizer(
-            cameras=cameras, 
+            cameras=cameras,
             raster_settings=raster_settings
         )
-    
+
     lights = PointLights(device=device, location=((0.0, 2.0, -2.0),), specular_color=((0.0, 0.0, 0.0),))
     gray_renderer = MeshRenderer(
-        rasterizer=rasterizer,        
+        rasterizer=rasterizer,
         shader = HardGouraudShader(device=device, lights=lights, cameras=cameras, blend_params=blend_params)
     )
 
@@ -267,9 +268,12 @@ def render_mesh_pt3d(img, verts, faces, cam_param, rasterizer=None):
     meshes = Meshes(verts=verts, faces=faces, textures=tex).to(device)
     rendered_imgs = gray_renderer(meshes_world=meshes, cameras=cameras)
 
-    # rendered_imgs = rendered_imgs[:, :img_h, :img_w].clone() ### crop 
-    render_img = rendered_imgs[0, ..., :3].detach().cpu().numpy() * 255.0
-    render_mask = rendered_imgs[0, ..., 3:].detach().cpu().numpy() 
+    # rendered_imgs = rendered_imgs[:, :img_h, :img_w].clone() ### crop
+    rendered_np = rendered_imgs[0].detach().cpu().numpy()
+    render_img = rendered_np[..., :3] * 255.0
+    render_mask = rendered_np[..., 3:]
+    # render_img = rendered_imgs[0, ..., :3].detach().cpu().numpy() * 255.0
+    # render_mask = rendered_imgs[0, ..., 3:].detach().cpu().numpy()
     output_image = img * (1.0 - render_mask) + render_img * render_mask
     output_image = output_image.astype(np.uint8)
     return output_image
@@ -278,14 +282,14 @@ def get_rasterizer(img_h, img_w):
     cameras = look_at_view_transform(2.7, 10, 20)
     blend_params = BlendParams(background_color=(1.0, 1.0, 1.0))
     raster_settings = RasterizationSettings(
-        image_size=(img_h, img_w), 
-        blur_radius=0.0, 
-        faces_per_pixel=1, 
+        image_size=(img_h, img_w),
+        blur_radius=0.0,
+        faces_per_pixel=1,
         bin_size = 0,  # this setting controls whether naive or coarse-to-fine rasterization is used
         max_faces_per_bin = None  # this setting is for coarse rasterization
     )
     rasterizer=MeshRasterizer(
-        cameras=cameras, 
+        cameras=cameras,
         raster_settings=raster_settings
     )
     return rasterizer
@@ -311,15 +315,15 @@ def check_visibility_pt3d(rasterizer, img, verts, faces, cam_param):
     tvec_pt = camera_pose[:, :3, 3].clone()
     tvec_pt[:, :2] *= -1
     cameras = PerspectiveCameras(R=R_pt, T=tvec_pt, focal_length=focal_pt, principal_point=p0_pt, image_size=image_size, device=device)
-        
+
     mesh = Meshes(verts=verts, faces=faces).to(device)
     # with torch.no_grad():
     #     fragments = rasterizer(mesh, cameras=cameras)
     #     print("=== fragments", fragments.zbuf.size(), flush=True)
-    #     depth_map = fragments.zbuf[0, ..., 0].cpu().numpy() 
+    #     depth_map = fragments.zbuf[0, ..., 0].cpu().numpy()
     # cv2.imwrite("./check.jpg", depth_map*255)
     # exit(0)
-    
+
     vertices = mesh.verts_packed().cpu().numpy()
     homogeneous_vertices = np.hstack([vertices, np.ones((vertices.shape[0], 1))])
     cam_transform = cameras.get_world_to_view_transform()
@@ -334,21 +338,21 @@ def check_visibility_pt3d(rasterizer, img, verts, faces, cam_param):
     min_depth_arr = np.ones((img_h, img_w), dtype=np.int32) * -1
     for i, (x, y) in enumerate(screen_vertices):
         if x < 0 or x >= img_w or y < 0 or y >= img_h:
-            visibility[i] = False  
+            visibility[i] = False
             continue
         # compare vertex depth with depth map (need to consider nan)
         depth = projected_vertices[i, 2]
         if depth < 0: #  behind the camera
-            continue 
+            continue
         if min_depth_arr[y][x] < 0:
-            min_depth_arr[y][x] = i 
+            min_depth_arr[y][x] = i
         else:
             cur_midx = min_depth_arr[y][x]
             cur_mdepth = projected_vertices[cur_midx, 2]
             if depth < cur_mdepth:
                 min_depth_arr[y][x] = i
 
-        # if depth < 0:  #  behind the camera 
+        # if depth < 0:  #  behind the camera
         #     visibility[i] = False
         #     continue
         # map_depth = depth_map[y, x]
@@ -364,10 +368,10 @@ def check_visibility_pt3d(rasterizer, img, verts, faces, cam_param):
         if x < 0 or x >= img_w or y < 0 or y >= img_h:
             continue
         if min_depth_arr[y][x] < 0:
-            continue             
+            continue
         cur_idx = min_depth_arr[y][x]
-        visibility[cur_idx] = True 
-    
+        visibility[cur_idx] = True
+
     # for i, v in enumerate(screen_vertices):
     #     # if not visibility[i]:
     #     #     continue
