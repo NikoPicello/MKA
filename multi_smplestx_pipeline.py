@@ -38,14 +38,7 @@ joint_set = {
 }
 joint_set['root_joint_idx'] = joint_set['joints_name'].index('Pelvis')
 
-cam_map = {
-  'GC' : 'GB',
-  'HC' : 'GF',
-  'Z1' : 'FC1',
-  'Z2' : 'FC2',
-  'N1' : 'HA1',
-  'N2' : 'HA2'
-}
+save_render = False
 
 SPATIAL_REGIONS = {
   'GB' : {0 : [0., 0.5, 0., 1.], 1 : [0.5, 1., 0., 1.]},
@@ -228,47 +221,30 @@ def main():
   detector = YOLO(bbox_model)
 
   for sid_path in sid_paths:
-    with open(os.path.join(sid_path, 'session_data.txt')) as f:
-      lines = f.readlines()
-      session_date = lines[0][5:].strip()
-      calib_date = lines[1][11:].strip()
-    curr_calib_path = os.path.join(calibs_path, calib_date)
-    cam_calibs = glob.glob(curr_calib_path + '/*')
-    cam_dict = {}
-    for cam_calib in cam_calibs:
-      cam_name = Path(cam_calib).stem
-      fs = cv.FileStorage(os.path.join(calibs_path, f"{calib_date}/{cam_name}.yml"), cv.FILE_STORAGE_READ)
-      K = fs.getNode('K').mat()
-      D = fs.getNode('D').mat()
-      R = fs.getNode('R').mat()
-      T = fs.getNode('T').mat()
-      fs.release()
-      cam_dict[cam_map[cam_name]] = {'K' : K, 'D' : D, 'R' : R, 'T' : T}
-
+    session_id = Path(sid_path).stem
     for activity in activities:
+      print(f'Processing {activity} for session {session_id}')
       vid_paths = glob.glob(os.path.join(sid_path, activity) + '/*')
       vid_paths = [v for v in vid_paths if not ('E1.mp4' in v or 'E2.mp4' in v)]
       for vid_path in vid_paths:
         video_name = Path(vid_path).stem
-        K = cam_dict[video_name]['K']
-        # cfg.model.focal = [K[0, 0], K[1, 1]]
-        # cfg.model.princpt = [K[0, 2], K[1, 2]]
-
         cap = cv.VideoCapture(vid_path)
         fps = int(cap.get(cv.CAP_PROP_FPS))
         total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
         frame_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
         frame_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-        rasterizer = get_rasterizer(frame_height, frame_width)
 
-        curr_out_path = os.path.join(out_path, f"{session_date}/{video_name}")
-        os.makedirs(curr_out_path, exists_ok=True)
-        out_vid_path = os.path.join(curr_out_path, f"{video_name}_render.mp4")
+        curr_out_path = os.path.join(out_path, f"{session_id}/{activity}")
+        os.makedirs(curr_out_path, exist_ok=True)
         out_npy_path = os.path.join(curr_out_path, f"{video_name}_res.npy")
-        writer = imageio.get_writer(
-            out_vid_path,
-            fps=fps, mode='I', format='FFMPEG', macro_block_size=1
-        )
+
+        if save_render:
+          rasterizer = get_rasterizer(frame_height, frame_width)
+          out_vid_path = os.path.join(curr_out_path, f"{video_name}_render.mp4")
+          writer = imageio.get_writer(
+              out_vid_path,
+              fps=fps, mode='I', format='FFMPEG', macro_block_size=1
+          )
 
         out_results = []
         for fidx in trange(total_frames):
@@ -280,11 +256,9 @@ def main():
           }
           transform = transforms.ToTensor()
           img_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-
           original_img = img_rgb.copy().astype(np.float32)
           vis_img = original_img.copy()
-          # detection, xyxy
-          # start = time.time()
+
           results = detector.predict(original_img,
                                       device='cuda:3',
                                       classes=00,
@@ -310,8 +284,6 @@ def main():
                                 img_height=frame_height,
                                 input_img_shape=cfg.model.input_img_shape,
                                 ratio=getattr(cfg.data, "bbox_ratio", 1.25))
-            # print('bbox processing')
-            # print(time.time() - start)
 
             focal = [cfg.model.focal[0] / cfg.model.input_body_shape[1] * bbox[2],
                     cfg.model.focal[1] / cfg.model.input_body_shape[0] * bbox[3]]
@@ -334,51 +306,35 @@ def main():
             targets = {}
             meta_info = {}
 
-            # mesh recovery
-            # print('mesh recovery')
-            # start = time.time()
             with torch.no_grad():
               out, smplx_output = demoer.model(inputs, targets, meta_info, 'test')
-            # print(time.time() - start)
 
-            # print('out 0')
-            # print(out[0])
-            # print('out 1')
-            # print(out[1])
-
-            # smplx_output = out["smplx_output"]
             mesh_cam = out["smplx_mesh_cam"]
             mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
 
             # generate confidence based on visibility
-            # points_visibility = check_visibility_pt3d(rasterizer, vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt})
-            # new_joints_img = demoer.model.module.get_joints_visibility(smplx_output, faces_tensor, points_visibility)
             new_joints_img = demoer.model.module.not_get_joints_visibility(smplx_output)
             new_joints_img[:, 0] = new_joints_img[:, 0] * bbox[2] / cfg.model.output_hm_shape[2] + bbox[0]
             new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
             curr_frame_dict["kpt2d"] = new_joints_img
-            # out_frame_dict["betas"] = smplx_output.betas[0].cpu().detach().float().numpy()
-            # out_frame_dict["expression"] = smplx_output.expression[0].cpu().detach().float().numpy()
-
-            # out_frame_dict["full_pose"] = smplx_output.full_pose[0].cpu().detach().float().numpy()
-            # out_frame_dict["transl"] = smplx_output.transl[0].cpu().detach().float().numpy()
             curr_frame_dict["betas"] = smplx_output['betas'][0].cpu().detach().float().numpy()
             curr_frame_dict["expression"] = smplx_output['expression'][0].cpu().detach().float().numpy()
-
             curr_frame_dict["full_pose"] = smplx_output['full_pose'][0].cpu().detach().float().numpy()
             curr_frame_dict["transl"] = smplx_output['transl'][0].cpu().detach().float().numpy()
             out_frame_dict[person_id] = curr_frame_dict
-            vis_img = render_mesh_pt3d(vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt}, rasterizer)
+            if save_render:
+              vis_img = render_mesh_pt3d(vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt}, rasterizer)
 
           out_results.append(out_frame_dict)
-          vis_image = cv.cvtColor(vis_img, cv.COLOR_BGR2RGB)
-          writer.append_data(vis_img.astype(np.uint8))
+          if save_render:
+            vis_image = cv.cvtColor(vis_img, cv.COLOR_BGR2RGB)
+            writer.append_data(vis_img.astype(np.uint8))
 
 
+        if save_render:
+          writer.close()
         cap.release()
-        writer.close()
-
         np.save(out_npy_path, out_results)
 
 if __name__ == '__main__':
