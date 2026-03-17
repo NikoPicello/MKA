@@ -2,8 +2,10 @@ import argparse
 import json
 import os
 from tqdm import trange, tqdm
+from pathlib import Path
 import imageio
-import cv2
+import cv2 as cv
+import glob
 
 from typing import List
 import numpy as np
@@ -12,21 +14,9 @@ from mmhuman3d.core.cameras.camera_parameters import CameraParameter as CameraPa
 from mmhuman3d.core.conventions.keypoints_mapping import KEYPOINTS_FACTORY
 
 import sys
-root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.append(root_path)
-sys.path.append(os.path.join(root_path, "dependencies"))
-
-from mocap.multi_view_3d_keypoint.triangulate_scene import TriangulateScene
 
 from aniposelib.cameras import interpolate_data
-from zoehuman.utils.keypoint_utils import search_limbs
 
-from zoehuman.core.visualization.visualize_keypoints3d import visualize_kp3d
-from zoehuman.data.data_structures import SMCReader
-from zoehuman.data.data_structures.human_data import HumanData
-from zoehuman.utils.path_utils import (  # prevent yapf isort conflict
-    Existence, check_path_existence, check_path_suffix,
-)
 
 
 class CameraParameter(CameraParameter_mm):
@@ -230,10 +220,8 @@ cam_map = {
   'N2' : 'HA2'
 }
 
-
+activities = ['animals', 'gaze', 'ghost', 'lego', 'talk']
 def main():
-  device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
   main_path = '/'.join(sys.path[0].split('/')[:-2]) + '/'
   resources_path = os.path.join(main_path, 'resources')
   calibs_path   = os.path.join(resources_path, 'calibs')
@@ -241,6 +229,28 @@ def main():
   out_path = os.path.join(resources_path, 'triangulation_results')
   kpt2d_dir = os.path.join(resources_path, 'smplestx_results')
   sid_paths = sorted(glob.glob(sessions_path + '/*'))
+  sys.path.append("./")
+  sys.path.append(os.path.join("./dependencies"))
+
+  from mocap.multi_view_3d_keypoint.triangulate_scene import TriangulateScene
+  from zoehuman.utils.keypoint_utils import search_limbs
+
+  from zoehuman.core.visualization.visualize_keypoints3d import visualize_kp3d
+  from zoehuman.data.data_structures import SMCReader
+  from zoehuman.data.data_structures.human_data import HumanData
+  from zoehuman.utils.path_utils import (  # prevent yapf isort conflict
+      Existence, check_path_existence, check_path_suffix,
+  )
+
+  src = "smplx"
+  dst = "human_data"
+  src_names = KEYPOINTS_FACTORY[src.lower()]
+  dst_names = KEYPOINTS_FACTORY[dst.lower()]
+  kpt2d_mask = np.ones(shape=[len(src_names)], dtype=np.uint8)
+  kpts_num = len(src_names)
+  invalid_kpt2d = np.zeros((kpts_num, 3), dtype=np.float32)
+
+
 
   for sid_path in sid_paths:
     session_id = Path(sid_path).stem
@@ -258,7 +268,7 @@ def main():
       R = fs.getNode('R').mat()
       T = fs.getNode('T').mat()
       fs.release()
-      cam_parameter = CameraParameter(name=cam_map[cam_name], 720, 1280) # TODO: check this
+      cam_parameter = CameraParameter(name=cam_map[cam_name], H=720, W=1280) # TODO: check this
       cam_parameter.load_camera_gt({'K' : K, 'D' : D, 'R' : R, 'T' : T})
       cam_para_list[cam_map[cam_name]] = cam_parameter
 
@@ -266,7 +276,16 @@ def main():
       vid_paths = glob.glob(os.path.join(sid_path, activity) + '/*')
       vid_paths = [v for v in vid_paths if not ('E1.mp4' in v or 'E2.mp4' in v)]
       kpt2d_path_arr = {}
+      img_width = None
+      img_height = None
+      total_frames = None
       for vid_path in vid_paths:
+        if img_width is None or img_height is None:
+          cap = cv.VideoCapture(vid_path)
+          img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+          img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+          total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+          cap.release()
         video_name = Path(vid_path).stem
         kpt2d_path = os.path.join(kpt2d_dir,  f"{session_id}/{activity}/{video_name}_res.npy")
         kpt2d_path_arr[video_name] = kpt2d_path
@@ -275,99 +294,101 @@ def main():
       out_wo_opt_npy_path = os.path.join(curr_out_path, "no_optim_kpt3d.npz")
       out_w_opt_npy_path = os.path.join(curr_out_path, "optim_kpt3d.npz")
 
-      kpt2d_all_list = {}
-      not_valid_arr = {}
-      human_data_list = {}
-      for cam_id in cam_map.values():
-        not_valid_arr[cam_id] = []
-        kpt2d_list = []
+      for p in [0, 1]:
+        kpt2d_all_list = {}
+        not_valid_arr = {}
+        human_data_list = {}
+        for cam_id in cam_map.values():
+          not_valid_arr[cam_id] = []
+          kpt2d_list = []
 
-        kpt2d_path = kpt2d_path_arr[cam_id]
-        kpt2d_arr = np.load(kpt2d_path, allow_pickle=True)
-        frame_len = len(kpt2d_arr)
-        print("=======", cam_id, frame_len, flush=True)
+          kpt2d_path = kpt2d_path_arr[cam_id]
+          kpt2d_arr = np.load(kpt2d_path, allow_pickle=True)
+          if p not in kpt2d_arr[0]: continue
+          frame_len = len(kpt2d_arr)
+          print("=======", cam_id, frame_len, flush=True)
 
-        prev_kpt2d = None
-        for fi in range(total_frames):
-            if "kpt2d" in kpt2d_arr[fi]:
-                kpt2d = np.array(kpt2d_arr[fi]["kpt2d"], dtype=np.float32)[:kpts_num]
-                for _i in range(kpts_num):
-                    kpt = kpt2d[_i]
-                    x = int(kpt[0])
-                    y = int(kpt[1])
-                    ### add perturbation
-                    if x < 0 or x >= img_width or y < 0 or y >= img_height:
-                        kpt2d[_i][2] = 0.0
-                    elif kpt2d[_i][2] > 0.8:
-                        kpt2d[_i][2] = np.random.uniform(0.8, 0.95)
-                    elif kpt2d[_i][2] < 0.1:
-                        kpt2d[_i][2] = np.random.uniform(0.1, 0.3)
+          prev_kpt2d = None
+          for fi in range(total_frames):
+            if "kpt2d" in kpt2d_arr[fi][p]:
+              kpt2d = np.array(kpt2d_arr[fi][p]["kpt2d"], dtype=np.float32)[:kpts_num]
+              for _i in range(kpts_num):
+                kpt = kpt2d[_i]
+                x = int(kpt[0])
+                y = int(kpt[1])
+                ### add perturbation
+                if x < 0 or x >= img_width or y < 0 or y >= img_height:
+                  kpt2d[_i][2] = 0.0
+                elif kpt2d[_i][2] > 0.8:
+                  kpt2d[_i][2] = np.random.uniform(0.8, 0.95)
+                elif kpt2d[_i][2] < 0.1:
+                  kpt2d[_i][2] = np.random.uniform(0.1, 0.3)
 
-                prev_kpt2d = kpt2d
-                kpt2d_list.append(kpt2d)
+              prev_kpt2d = kpt2d
+              kpt2d_list.append(kpt2d)
             elif prev_kpt2d is not None:
-                print(f"=== fill kpt2d {cam_id}_{fi:04d} with previous", flush=True)
-                kpt2d_list.append(prev_kpt2d)
+              print(f"=== fill kpt2d {cam_id}_{fi:04d} with previous", flush=True)
+              kpt2d_list.append(prev_kpt2d)
             else:
-                print(f"=== failed to load kpt2d in {cam_id}_{fi:04d}", flush=True)
-                not_valid_arr[cam_id].append(fi)
-                kpt2d_list.append(invalid_kpt2d)
+              print(f"=== failed to load kpt2d in {cam_id}_{fi:04d}", flush=True)
+              not_valid_arr[cam_id].append(fi)
+              kpt2d_list.append(invalid_kpt2d)
 
-        kpt2d_list = np.stack(kpt2d_list, axis=0)
-        kpt2d_all_list[cam_id] = kpt2d_list
+          kpt2d_list = np.stack(kpt2d_list, axis=0)
+          kpt2d_all_list[cam_id] = kpt2d_list
 
 
-    invalid_idx_arr = []
-    for cam_id in cam_map.values():
-        invalid_idx_arr += not_valid_arr[cam_id]
-    unique_invalid_idx = np.unique(invalid_idx_arr).astype(int)
-    unique_mask = np.ones(total_frames, dtype=bool)
-    unique_mask[unique_invalid_idx] = False
+        invalid_idx_arr = []
+        for cam_id in cam_map.values():
+          invalid_idx_arr += not_valid_arr[cam_id]
+        unique_invalid_idx = np.unique(invalid_idx_arr).astype(int)
+        unique_mask = np.ones(total_frames, dtype=bool)
+        unique_mask[unique_invalid_idx] = False
 
-    ### filter out invalid keypoints
-    for cam_id in cam_map.values():
-        cur_kpt2d = kpt2d_all_list[cam_id].copy()
-        filtered_cur_kpt2d = cur_kpt2d[unique_mask]
-        print(f"cam {cam_id} after filter", filtered_cur_kpt2d.shape, flush=True)
+        ### filter out invalid keypoints
+        for cam_id in cam_map.values():
+          cur_kpt2d = kpt2d_all_list[cam_id].copy()
+          filtered_cur_kpt2d = cur_kpt2d[unique_mask]
+          print(f"cam {cam_id} after filter", filtered_cur_kpt2d.shape, flush=True)
 
-        kpt_dict = {
+          kpt_dict = {
             'keypoints2d': filtered_cur_kpt2d,
             'keypoints2d_mask': kpt2d_mask,
             'keypoints2d_convention': 'smplx'
-        }
-        human_data_list[cam_id] = kpt_dict
+          }
+          human_data_list[cam_id] = kpt_dict
 
-    # scene = TriangulateScene(cam_para_list, 'auto')
-    scene = TriangulateScene(cam_para_list, 0.1)
-    result_dict = {'optim': {}, 'no_optim': {}, 'invalid_idx': not_valid_arr}
-    # triangulate
-    keypoints3d_no_optim = []
-    keypoints3d_optim = []
-    frame_num = human_data_list[cam_id]["keypoints2d"].shape[0]
-    interval = 100
-    for _fi in trange(0, frame_num, interval):
-        human_data = []
-        start_fi = _fi
-        end_fi = min(_fi + interval, frame_num)
+        # scene = TriangulateScene(cam_para_list, 'auto')
+        scene = TriangulateScene(cam_para_list, 0.1)
+        result_dict = {'optim': {}, 'no_optim': {}, 'invalid_idx': not_valid_arr}
+        # triangulate
+        keypoints3d_no_optim = []
+        keypoints3d_optim = []
+        frame_num = human_data_list[cam_id]["keypoints2d"].shape[0]
+        interval = 100
+        for _fi in trange(0, frame_num, interval):
+          human_data = []
+          start_fi = _fi
+          end_fi = min(_fi + interval, frame_num)
 
-        for cam_id in cam_map.values():
+          for cam_id in cam_map.values():
             cur_dict = {
-                'keypoints2d': human_data_list[cam_id]["keypoints2d"][start_fi:end_fi],
-                'keypoints2d_mask': kpt2d_mask,
-                'keypoints2d_convention': 'smplx'
+              'keypoints2d': human_data_list[cam_id]["keypoints2d"][start_fi:end_fi],
+              'keypoints2d_mask': kpt2d_mask,
+              'keypoints2d_convention': 'smplx'
             }
             human_data.append(cur_dict)
 
-        kpt3d_no_opt = scene.triangulate(human_data)
-        kpt3d_opt = scene.optim(human_data, keypoints3d=kpt3d_no_opt, constraints=None)
-        keypoints3d_no_optim.append(kpt3d_no_opt)
-        keypoints3d_optim.append(kpt3d_opt)
+          kpt3d_no_opt = scene.triangulate(human_data)
+          kpt3d_opt = scene.optim(human_data, keypoints3d=kpt3d_no_opt, constraints=None)
+          keypoints3d_no_optim.append(kpt3d_no_opt)
+          keypoints3d_optim.append(kpt3d_opt)
 
-    result_dict['no_optim']['keypoints3d'] = np.concatenate(keypoints3d_no_optim, axis=0)
-    result_dict['optim']['keypoints3d'] = np.concatenate(keypoints3d_optim, axis=0)
+        result_dict['no_optim']['keypoints3d'] = np.concatenate(keypoints3d_no_optim, axis=0)
+        result_dict['optim']['keypoints3d'] = np.concatenate(keypoints3d_optim, axis=0)
 
-    for key in ['optim', 'no_optim']:
-        if result_dict[key] is not None:
+        for key in ['optim', 'no_optim']:
+          if result_dict[key] is not None:
             keypoints3d = result_dict[key]['keypoints3d']
             human_data_3d = \
                 TriangulateScene.convert_result_to_human_data(
@@ -381,66 +402,65 @@ def main():
                 out_npy_path = out_w_opt_npy_path
             human_data_3d.dump(out_npy_path)
 
-    out_video_path = os.path.join(args.out_dir, "optim_kpt3d_render.mp4")
-    print("=== visualization", out_video_path, flush=True)
-    cap = cv2.VideoCapture(video_path_arr[0])
-    img_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    img_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        out_video_path = os.path.join(args.out_dir, "optim_kpt3d_render.mp4")
+        print("=== visualization", out_video_path, flush=True)
+        cap = cv.VideoCapture(video_path_arr[0])
+        img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+        img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+        fps = int(cap.get(cv.CAP_PROP_FPS))
+        total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
 
-    writer = imageio.get_writer(
-        out_video_path,
-        fps=fps, mode='I', format='FFMPEG', macro_block_size=1
-    )
+        writer = imageio.get_writer(
+          out_video_path,
+          fps=fps, mode='I', format='FFMPEG', macro_block_size=1
+        )
 
-    keypoints3d = result_dict['optim']['keypoints3d'][..., :3]
-    joint_num = keypoints3d.shape[1]
-    ones = np.ones((joint_num, 1))
+        keypoints3d = result_dict['optim']['keypoints3d'][..., :3]
+        joint_num = keypoints3d.shape[1]
+        ones = np.ones((joint_num, 1))
 
-    cam_param = cam_para_list[0]
-    intrinsic_mat = cam_param.get_mat_np('in_mat')
-    R_mat = cam_param.get_mat_np('rotation_mat')
-    t_vec = np.array(cam_param.get_value('translation'))
-    extrinsic_mat = np.eye(4, dtype=np.float32)
-    extrinsic_mat[:3, :3] = R_mat.copy()
-    if len(t_vec.shape) == 1:
-        extrinsic_mat[:3, 3] = t_vec.copy()
-    else:
-        extrinsic_mat[:3, 3] = t_vec.squeeze()
+        cam_param = cam_para_list[0]
+        intrinsic_mat = cam_param.get_mat_np('in_mat')
+        R_mat = cam_param.get_mat_np('rotation_mat')
+        t_vec = np.array(cam_param.get_value('translation'))
+        extrinsic_mat = np.eye(4, dtype=np.float32)
+        extrinsic_mat[:3, :3] = R_mat.copy()
+        if len(t_vec.shape) == 1:
+          extrinsic_mat[:3, 3] = t_vec.copy()
+        else:
+          extrinsic_mat[:3, 3] = t_vec.squeeze()
 
-    for fi in trange(total_frames):
-        ret, frame = cap.read()
-        if not ret:
+        for fi in trange(total_frames):
+          ret, frame = cap.read()
+          if not ret:
             break
 
-        if fi >= len(keypoints3d):
+          if fi >= len(keypoints3d):
             break
 
-        if fi in unique_invalid_idx:
+          if fi in unique_invalid_idx:
             print("=== invalid", fi, flush=True)
             continue
 
-        rgb_img = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        kpt3d_homo = np.concatenate([keypoints3d[fi], ones], axis=1)
-        kpt3d_cam = np.matmul(extrinsic_mat, kpt3d_homo.transpose()).transpose()[:, :3]
-        kpt3d_cam_norm = kpt3d_cam / kpt3d_cam[:, 2:]
-        kpt2d_img = np.matmul(intrinsic_mat, kpt3d_cam_norm.transpose()).transpose()
-        if np.isnan(kpt2d_img).any():
+          rgb_img = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+          kpt3d_homo = np.concatenate([keypoints3d[fi], ones], axis=1)
+          kpt3d_cam = np.matmul(extrinsic_mat, kpt3d_homo.transpose()).transpose()[:, :3]
+          kpt3d_cam_norm = kpt3d_cam / kpt3d_cam[:, 2:]
+          kpt2d_img = np.matmul(intrinsic_mat, kpt3d_cam_norm.transpose()).transpose()
+          if np.isnan(kpt2d_img).any():
             print("=== nan contains", fi, flush=True)
 
-        for kpt in kpt2d_img:
-            if np.isnan(kpt).any():
-                continue
+          for kpt in kpt2d_img:
+            if np.isnan(kpt).any(): continue
 
             x = int(kpt[0])
             y = int(kpt[1])
-            cv2.circle(rgb_img, (x, y), 3, (0, 0, 255), -1)
+            cv.circle(rgb_img, (x, y), 3, (0, 0, 255), -1)
 
-        writer.append_data(rgb_img)
+          writer.append_data(rgb_img)
 
-    writer.close()
-    cap.release()
+        writer.close()
+        cap.release()
 
 if __name__ == '__main__':
     main()
