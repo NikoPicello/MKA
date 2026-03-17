@@ -294,6 +294,7 @@ def main():
       out_wo_opt_npy_path = os.path.join(curr_out_path, "no_optim_kpt3d.npz")
       out_w_opt_npy_path = os.path.join(curr_out_path, "optim_kpt3d.npz")
 
+      result_dict_all = {}
       for p in [0, 1]:
         kpt2d_all_list = {}
         not_valid_arr = {}
@@ -402,47 +403,59 @@ def main():
                 out_npy_path = out_w_opt_npy_path
             human_data_3d.dump(out_npy_path)
 
-        out_video_path = os.path.join(args.out_dir, "optim_kpt3d_render.mp4")
-        print("=== visualization", out_video_path, flush=True)
-        cap = cv.VideoCapture(video_path_arr[0])
-        img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-        img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-        fps = int(cap.get(cv.CAP_PROP_FPS))
-        total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+        result_dict_all[p] = result_dict
 
-        writer = imageio.get_writer(
-          out_video_path,
-          fps=fps, mode='I', format='FFMPEG', macro_block_size=1
-        )
+      out_video_path = os.path.join(args.out_dir, "optim_kpt3d_render.mp4")
+      print("=== visualization", out_video_path, flush=True)
+      cap = cv.VideoCapture(video_path_arr[0])
+      img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+      img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+      fps = int(cap.get(cv.CAP_PROP_FPS))
+      total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
 
-        keypoints3d = result_dict['optim']['keypoints3d'][..., :3]
-        joint_num = keypoints3d.shape[1]
-        ones = np.ones((joint_num, 1))
+      writer = imageio.get_writer(
+        out_video_path,
+        fps=fps, mode='I', format='FFMPEG', macro_block_size=1
+      )
 
-        cam_param = cam_para_list[0]
-        intrinsic_mat = cam_param.get_mat_np('in_mat')
-        R_mat = cam_param.get_mat_np('rotation_mat')
-        t_vec = np.array(cam_param.get_value('translation'))
-        extrinsic_mat = np.eye(4, dtype=np.float32)
-        extrinsic_mat[:3, :3] = R_mat.copy()
-        if len(t_vec.shape) == 1:
-          extrinsic_mat[:3, 3] = t_vec.copy()
-        else:
-          extrinsic_mat[:3, 3] = t_vec.squeeze()
 
-        for fi in trange(total_frames):
-          ret, frame = cap.read()
-          if not ret:
-            break
+      cam_param = cam_para_list[0]
+      intrinsic_mat = cam_param.get_mat_np('in_mat')
+      R_mat = cam_param.get_mat_np('rotation_mat')
+      t_vec = np.array(cam_param.get_value('translation'))
+      extrinsic_mat = np.eye(4, dtype=np.float32)
+      extrinsic_mat[:3, :3] = R_mat.copy()
+      if len(t_vec.shape) == 1:
+        extrinsic_mat[:3, 3] = t_vec.copy()
+      else:
+        extrinsic_mat[:3, 3] = t_vec.squeeze()
+
+      for fi in trange(total_frames):
+        ret, frame = cap.read()
+        if not ret:
+          break
+        rgb_img = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+        for p in [0, 1]:
+          if p not in result_dict_all: continue
+
+          result_dict = result_dict_all[p]
+          keypoints3d = result_dict['optim']['keypoints3d'][..., :3]
+          invalid_idx_arr = result_dict['invalid_idx']
+
+          all_invalid = []
+          for cam_id in invalid_idx_arr:
+            all_invalid += invalid_idx_arr[cam_id]
+          unique_invalid_idx = np.unique(all_invalid).astype(int)
 
           if fi >= len(keypoints3d):
             break
-
           if fi in unique_invalid_idx:
             print("=== invalid", fi, flush=True)
             continue
 
-          rgb_img = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
+          joint_num = keypoints3d.shape[1]
+          ones = np.ones((joint_num, 1))
+
           kpt3d_homo = np.concatenate([keypoints3d[fi], ones], axis=1)
           kpt3d_cam = np.matmul(extrinsic_mat, kpt3d_homo.transpose()).transpose()[:, :3]
           kpt3d_cam_norm = kpt3d_cam / kpt3d_cam[:, 2:]
@@ -457,10 +470,10 @@ def main():
             y = int(kpt[1])
             cv.circle(rgb_img, (x, y), 3, (0, 0, 255), -1)
 
-          writer.append_data(rgb_img)
+        writer.append_data(rgb_img)
 
-        writer.close()
-        cap.release()
+      writer.close()
+      cap.release()
 
 if __name__ == '__main__':
     main()
