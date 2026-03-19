@@ -17,6 +17,9 @@ import sys
 
 from aniposelib.cameras import interpolate_data
 
+def printv(sentence, verbose=False):
+  if verbose:
+    print(sentence)
 
 
 class CameraParameter(CameraParameter_mm):
@@ -220,8 +223,14 @@ cam_map = {
   'N2' : 'HA2'
 }
 
+person_cams = {
+    0 : ['GB', 'GF', 'FC1', 'HA1'],
+    1 : ['GB', 'GF', 'FC2', 'HA2']
+}
+
 activities = ['animals', 'gaze', 'ghost', 'lego', 'talk']
 def main():
+  verbose = True
   main_path = '/'.join(sys.path[0].split('/')[:-2]) + '/'
   resources_path = os.path.join(main_path, 'resources')
   calibs_path   = os.path.join(resources_path, 'calibs')
@@ -268,38 +277,51 @@ def main():
       R = fs.getNode('R').mat()
       T = fs.getNode('T').mat()
       fs.release()
-      cam_parameter = CameraParameter(name=cam_map[cam_name], H=720, W=1280) # TODO: check this
+      cam_parameter = CameraParameter(name=cam_map[cam_name], H=1080, W=1920) # TODO: check this
       cam_parameter.load_camera_gt({'K' : K, 'D' : D, 'R' : R, 'T' : T})
       cam_para_list[cam_map[cam_name]] = cam_parameter
 
     for activity in activities:
+      print(f"Processing {activity} in {session_id}")
       vid_paths = glob.glob(os.path.join(sid_path, activity) + '/*')
       vid_paths = [v for v in vid_paths if not ('E1.mp4' in v or 'E2.mp4' in v)]
+      vid_paths_dict = {}
       kpt2d_path_arr = {}
       img_width = None
       img_height = None
       total_frames = None
+      fps = None
       for vid_path in vid_paths:
         if img_width is None or img_height is None:
           cap = cv.VideoCapture(vid_path)
           img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
           img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+          print(img_width)
+          print(img_height)
           total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
+          fps = int(cap.get(cv.CAP_PROP_FPS))
           cap.release()
         video_name = Path(vid_path).stem
         kpt2d_path = os.path.join(kpt2d_dir,  f"{session_id}/{activity}/{video_name}_res.npy")
         kpt2d_path_arr[video_name] = kpt2d_path
+        vid_paths_dict[video_name] = vid_path
+
+      total_frames = 1
 
       curr_out_path = os.path.join(out_path, f"{session_id}/{activity}/")
+      os.makedirs(curr_out_path, exist_ok=True)
       out_wo_opt_npy_path = os.path.join(curr_out_path, "no_optim_kpt3d.npz")
       out_w_opt_npy_path = os.path.join(curr_out_path, "optim_kpt3d.npz")
 
       result_dict_all = {}
       for p in [0, 1]:
+        printv(f"Triangulation on person {p+1}/2", verbose=verbose)
         kpt2d_all_list = {}
         not_valid_arr = {}
         human_data_list = {}
-        for cam_id in cam_map.values():
+        # for cam_id in cam_map.values():
+        for cam_id in person_cams[p]:
+          printv(f"Obtaining keypoints from {cam_id} among cameras: {person_cams[p]}", verbose=verbose)
           not_valid_arr[cam_id] = []
           kpt2d_list = []
 
@@ -320,10 +342,10 @@ def main():
                 ### add perturbation
                 if x < 0 or x >= img_width or y < 0 or y >= img_height:
                   kpt2d[_i][2] = 0.0
-                elif kpt2d[_i][2] > 0.8:
-                  kpt2d[_i][2] = np.random.uniform(0.8, 0.95)
-                elif kpt2d[_i][2] < 0.1:
-                  kpt2d[_i][2] = np.random.uniform(0.1, 0.3)
+                # elif kpt2d[_i][2] > 0.8:
+                #   kpt2d[_i][2] = np.random.uniform(0.8, 0.95)
+                # elif kpt2d[_i][2] < 0.1:
+                #   kpt2d[_i][2] = np.random.uniform(0.1, 0.3)
 
               prev_kpt2d = kpt2d
               kpt2d_list.append(kpt2d)
@@ -339,18 +361,24 @@ def main():
           kpt2d_all_list[cam_id] = kpt2d_list
 
 
+        printv("Obtaining invalid indexes", verbose=verbose)
         invalid_idx_arr = []
-        for cam_id in cam_map.values():
+        # for cam_id in cam_map.values():
+        for cam_id in person_cams[p]:
           invalid_idx_arr += not_valid_arr[cam_id]
         unique_invalid_idx = np.unique(invalid_idx_arr).astype(int)
         unique_mask = np.ones(total_frames, dtype=bool)
         unique_mask[unique_invalid_idx] = False
 
         ### filter out invalid keypoints
-        for cam_id in cam_map.values():
+        printv("Filtering out invalid keypoints", verbose=verbose)
+        # for cam_id in cam_map.values():
+        for cam_id in person_cams[p]:
           cur_kpt2d = kpt2d_all_list[cam_id].copy()
           filtered_cur_kpt2d = cur_kpt2d[unique_mask]
           print(f"cam {cam_id} after filter", filtered_cur_kpt2d.shape, flush=True)
+
+          printv(f"filtered kpts 2d has {len(filtered_cur_kpt2d)} elements", verbose=verbose)
 
           kpt_dict = {
             'keypoints2d': filtered_cur_kpt2d,
@@ -360,24 +388,35 @@ def main():
           human_data_list[cam_id] = kpt_dict
 
         # scene = TriangulateScene(cam_para_list, 'auto')
-        scene = TriangulateScene(cam_para_list, 0.1)
+        curr_cam_para = [cam_para_list[cam_id] for cam_id in person_cams[p]]
+        scene = TriangulateScene(curr_cam_para, 0.1)
         result_dict = {'optim': {}, 'no_optim': {}, 'invalid_idx': not_valid_arr}
         # triangulate
         keypoints3d_no_optim = []
         keypoints3d_optim = []
         frame_num = human_data_list[cam_id]["keypoints2d"].shape[0]
-        interval = 100
+        frame_num = 1
+        printv(f"frame num is {frame_num}", verbose=verbose)
+        interval = 1
+        printv("Applying triangulation", verbose=verbose)
         for _fi in trange(0, frame_num, interval):
           human_data = []
           start_fi = _fi
           end_fi = min(_fi + interval, frame_num)
+          print(start_fi)
+          print(end_fi)
 
-          for cam_id in cam_map.values():
+          # for cam_id in cam_map.values():
+          for cam_id in person_cams[p]:
             cur_dict = {
               'keypoints2d': human_data_list[cam_id]["keypoints2d"][start_fi:end_fi],
               'keypoints2d_mask': kpt2d_mask,
               'keypoints2d_convention': 'smplx'
             }
+
+            printv(f"for {cam_id} the human data are:", verbose=verbose)
+            printv(f"keypoints2d -> {cur_dict['keypoints2d'].shape}", verbose=verbose)
+            printv(f"keypoints2d -> {cur_dict['keypoints2d_mask'].shape}", verbose=verbose)
             human_data.append(cur_dict)
 
           kpt3d_no_opt = scene.triangulate(human_data)
@@ -388,6 +427,7 @@ def main():
         result_dict['no_optim']['keypoints3d'] = np.concatenate(keypoints3d_no_optim, axis=0)
         result_dict['optim']['keypoints3d'] = np.concatenate(keypoints3d_optim, axis=0)
 
+        printv(f"Filling result dictionary for person {p+1}/2", verbose=verbose)
         for key in ['optim', 'no_optim']:
           if result_dict[key] is not None:
             keypoints3d = result_dict[key]['keypoints3d']
@@ -401,25 +441,22 @@ def main():
                 out_npy_path = out_wo_opt_npy_path
             else:
                 out_npy_path = out_w_opt_npy_path
-            human_data_3d.dump(out_npy_path)
+            # human_data_3d.dump(out_npy_path)
 
         result_dict_all[p] = result_dict
 
-      out_video_path = os.path.join(args.out_dir, "optim_kpt3d_render.mp4")
+      print(result_dict_all)
+      printv("Start rendering!", verbose=verbose)
+      out_video_path = os.path.join(curr_out_path, "optim_kpt3d_render.mp4")
       print("=== visualization", out_video_path, flush=True)
-      cap = cv.VideoCapture(video_path_arr[0])
-      img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-      img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
-      fps = int(cap.get(cv.CAP_PROP_FPS))
-      total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
-
       writer = imageio.get_writer(
         out_video_path,
         fps=fps, mode='I', format='FFMPEG', macro_block_size=1
       )
 
-
-      cam_param = cam_para_list[0]
+      ref_cam = 'GB'
+      cap = cv.VideoCapture(vid_paths_dict[ref_cam])
+      cam_param = cam_para_list[ref_cam]
       intrinsic_mat = cam_param.get_mat_np('in_mat')
       R_mat = cam_param.get_mat_np('rotation_mat')
       t_vec = np.array(cam_param.get_value('translation'))
