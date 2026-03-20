@@ -306,13 +306,15 @@ def main():
         kpt2d_path_arr[video_name] = kpt2d_path
         vid_paths_dict[video_name] = vid_path
 
-      total_frames = 1
+      total_frames = 4
 
       curr_out_path = os.path.join(out_path, f"{session_id}/{activity}/")
       os.makedirs(curr_out_path, exist_ok=True)
       out_wo_opt_npy_path = os.path.join(curr_out_path, "no_optim_kpt3d.npz")
       out_w_opt_npy_path = os.path.join(curr_out_path, "optim_kpt3d.npz")
 
+
+      # TODO: CHANGE INTO LOOPING FIRST ON EVERY FRAME AND TRINAUGLATE THE PEOPLE AT EACH TIME STAMP, INSTEAD OF VICE-VERSA
       result_dict_all = {}
       for p in [0, 1]:
         printv(f"Triangulation on person {p+1}/2", verbose=verbose)
@@ -395,9 +397,9 @@ def main():
         keypoints3d_no_optim = []
         keypoints3d_optim = []
         frame_num = human_data_list[cam_id]["keypoints2d"].shape[0]
-        frame_num = 1
+        frame_num = 4
         printv(f"frame num is {frame_num}", verbose=verbose)
-        interval = 1
+        interval = 2
         printv("Applying triangulation", verbose=verbose)
         for _fi in trange(0, frame_num, interval):
           human_data = []
@@ -443,9 +445,10 @@ def main():
                 out_npy_path = out_w_opt_npy_path
             # human_data_3d.dump(out_npy_path)
 
+        print(f"Adding result for person {p}")
         result_dict_all[p] = result_dict
 
-      print(result_dict_all)
+      print(result_dict_all[1])
       printv("Start rendering!", verbose=verbose)
       out_video_path = os.path.join(curr_out_path, "optim_kpt3d_render.mp4")
       print("=== visualization", out_video_path, flush=True)
@@ -454,7 +457,7 @@ def main():
         fps=fps, mode='I', format='FFMPEG', macro_block_size=1
       )
 
-      ref_cam = 'GB'
+      ref_cam = 'GF'
       cap = cv.VideoCapture(vid_paths_dict[ref_cam])
       cam_param = cam_para_list[ref_cam]
       intrinsic_mat = cam_param.get_mat_np('in_mat')
