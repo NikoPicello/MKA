@@ -18,7 +18,7 @@ from ultralytics import YOLO
 from utils.base import Tester
 from utils.config import Config
 from utils.data_utils import load_img, process_bbox, generate_patch_image
-from utils.visualization_utils import render_mesh, render_mesh_pt3d, get_rasterizer, check_visibility_pt3d
+from utils.visualization_utils import render_mesh, render_mesh_pt3d, get_rasterizer, check_visibility_pt3d, check_visibility_pt3d_cached
 from utils.inference_utils import non_max_suppression
 from utils.transforms import world2cam, cam2pixel, rigid_align
 from pycocotools.coco import COCO
@@ -220,7 +220,7 @@ def main():
   bbox_model = getattr(cfg.inference.detection, "model_path",
                       './pretrained_models/yolov8x.pt')
   detector = YOLO(bbox_model)
-
+  visibility_cache = {}
   for sid_path in sid_paths:
     session_id = Path(sid_path).stem
     for activity in activities:
@@ -229,6 +229,9 @@ def main():
       vid_paths = [v for v in vid_paths if not ('E1.mp4' in v or 'E2.mp4' in v)]
       for vid_path in vid_paths:
         video_name = Path(vid_path).stem
+
+        visibility_cache.clear()
+
         cap = cv.VideoCapture(vid_path)
         fps = int(cap.get(cv.CAP_PROP_FPS))
         total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
@@ -253,9 +256,7 @@ def main():
           ret, frame = cap.read()
           if not ret: break
 
-          out_frame_dict = {
-            "fidx": fidx,
-          }
+          out_frame_dict = {"fidx": fidx}
           transform = transforms.ToTensor()
           img_rgb = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
           original_img = img_rgb.copy().astype(np.float32)
@@ -312,10 +313,31 @@ def main():
               out, smplx_output = demoer.model(inputs, targets, meta_info, 'test')
 
             mesh_cam = out["smplx_mesh_cam"]
-            mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
+
+            pelvis_position = smplx_output['joints'][0, 0].cpu().numpy()
+
+            verts = smplx_output['vertices']
+            cam_param_dict = {'focal': focal, 'princpt': princpt}
+
+            points_visibility = check_visibility_pt3d_cached(
+              rasterizer, img_rgb, verts, faces_tensor, 
+              cam_param_dict, visibility_cache, 
+              video_name, fidx, pelvis_position,
+              motion_threshold=0.05  # 5cm movement thre
+            )
+            new_joints_img = demoer.model.module.get_joints_visibility_optimized(
+              smplx_output,
+              faces_tensor,
+              points_visibility,
+              video_name,  # camera name
+              fidx,
+              visibility_cache
+            )
+
+            # mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
 
             # generate confidence based on visibility
-            new_joints_img = demoer.model.module.not_get_joints_visibility(smplx_output)
+            # new_joints_img = demoer.model.module.not_get_joints_visibility(smplx_output)
             new_joints_img[:, 0] = new_joints_img[:, 0] * bbox[2] / cfg.model.output_hm_shape[2] + bbox[0]
             new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
@@ -330,7 +352,7 @@ def main():
 
           out_results.append(out_frame_dict)
           if save_render and fidx<n_frames_to_render:
-            vis_image = cv.cvtColor(vis_img, cv.COLOR_BGR2RGB)
+            vis_img = cv.cvtColor(vis_img, cv.COLOR_BGR2RGB)
             writer.append_data(vis_img.astype(np.uint8))
 
 

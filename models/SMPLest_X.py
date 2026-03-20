@@ -575,6 +575,97 @@ class Model(nn.Module):
         num_joints = joints_img_np.shape[0]
         conf = np.ones((num_joints, 1), dtype=np.float32)
         return np.concatenate((joints_img_np, conf), axis=1)
+    
+    def get_joints_visibility_optimized(self, smplx_output, faces, points_visibility, 
+                                    camera_name, frame_id, visibility_cache):
+        """
+        Optimized joint visibility with caching for seated scenarios
+        
+        Args:
+            smplx_output: dict with 'joints' and 'vertices' tensors
+            faces: face tensor
+            points_visibility: vertex visibility array from cached computation
+            camera_name: camera identifier
+            frame_id: current frame number
+            visibility_cache: shared cache dict
+        
+        Returns:
+            joints_img_np: (num_joints, 3) array with [x, y, confidence]
+        """
+        joints_cam = smplx_output['joints'].clone()
+        
+        # Determine if this is a front camera (static lower body occlusion)
+        is_front_camera = (camera_name != 'GF')  # GF is the back camera
+        
+        # Lower body joint indices from SMPL-X mapping
+        lower_body_indices = [0, 1, 2, 4, 5, 7, 8, 10, 11, 59, 60, 61, 62, 63, 64]
+        
+        # Get skinning weights
+        _skinning_weights = self.smplx_layer.lbs_weights
+        num_joints = joints_cam.shape[1]
+        
+        # Fast joint confidence computation using weighted vertex visibility
+        joints_conf = self._compute_joint_confidence_fast(
+            points_visibility,
+            _skinning_weights,
+            num_joints,
+            lower_body_indices=lower_body_indices,
+            is_front_camera=is_front_camera
+        )
+        
+        # Project joints to image space
+        joints_img = self.proj_joints(joints_cam)
+        joints_img_np = joints_img.cpu().detach().float().numpy()[0]
+        
+        # Pad confidence if needed
+        all_num_joints = joints_cam.shape[1]
+        if len(joints_conf) < all_num_joints:
+            joints_conf = np.pad(joints_conf, (0, all_num_joints - len(joints_conf)), 
+                                mode='constant', constant_values=0)
+        
+        # Concatenate with confidence
+        joints_img_np = np.concatenate((joints_img_np, joints_conf[..., None]), axis=1)
+        
+        return joints_img_np
+
+    def _compute_joint_confidence_fast(self, verts_visibility, skinning_weights, num_joints, 
+                                    lower_body_indices=None, is_front_camera=True):
+        """
+        Fast joint confidence computation using weighted vertex visibility
+        
+        Args:
+            verts_visibility: (num_verts,) bool/float array of vertex visibility
+            skinning_weights: (num_verts, num_joints) tensor of SMPL-X skinning weights
+            num_joints: number of joints to compute confidence for
+            lower_body_indices: list of joint indices for lower body
+            is_front_camera: whether this is a front camera (full lower body occlusion)
+        
+        Returns:
+            joints_conf: (num_joints,) array of confidence scores [0, 1]
+        """
+        device = skinning_weights.device
+        
+        # Convert visibility to tensor
+        if isinstance(verts_visibility, np.ndarray):
+            verts_vis_tensor = torch.from_numpy(verts_visibility.astype(np.float32)).to(device)
+        else:
+            verts_vis_tensor = verts_visibility.float().to(device)
+        
+        # Extract relevant skinning weights
+        weights = skinning_weights[:, :num_joints]
+        
+        # Weighted confidence: sum(weight * visibility) / sum(weight)
+        # This is a single matrix multiplication - very fast!
+        weighted_vis = (weights.T @ verts_vis_tensor.unsqueeze(-1)).squeeze()
+        total_weights = weights.sum(dim=0)
+        
+        joints_conf = (weighted_vis / (total_weights + 1e-8)).cpu().numpy()
+        
+        # Apply static occlusion for lower body (front cameras only)
+        if is_front_camera and lower_body_indices is not None:
+            joints_conf[lower_body_indices] = 0.0
+        
+        return joints_conf
 
 def get_model(cfg, mode):
 
