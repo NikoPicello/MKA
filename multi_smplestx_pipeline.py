@@ -38,11 +38,12 @@ joint_set = {
 }
 joint_set['root_joint_idx'] = joint_set['joints_name'].index('Pelvis')
 
-save_render = False
+save_render = True
+n_frames_to_render = 500
 
 SPATIAL_REGIONS = {
-  'GB' : {0 : [0., 0.5, 0., 1.], 1 : [0.5, 1., 0., 1.]},
-  'GF' : {0 : [0.5, 1., 0., 1.], 1 : [0., 0.5, 0., 1.]},
+  'GF' : {0 : [0., 0.5, 0., 1.], 1 : [0.5, 1., 0., 1.]},
+  'GB' : {1 : [0., 0.5, 0., 1.], 0 : [0.5, 1., 0., 1.]},
   'FC1' : {0 : [0.25, 0.75, 0., 1.]},
   'FC2' : {1 : [0.25, 0.75, 0., 1.]},
   'HA1' : {0 : [0.25, 0.75, 0., 1.]},
@@ -248,6 +249,7 @@ def main():
 
         out_results = []
         for fidx in trange(total_frames):
+        # for fidx in trange(200):
           ret, frame = cap.read()
           if not ret: break
 
@@ -323,11 +325,11 @@ def main():
             curr_frame_dict["full_pose"] = smplx_output['full_pose'][0].cpu().detach().float().numpy()
             curr_frame_dict["transl"] = smplx_output['transl'][0].cpu().detach().float().numpy()
             out_frame_dict[person_id] = curr_frame_dict
-            if save_render:
+            if save_render and fidx<n_frames_to_render:
               vis_img = render_mesh_pt3d(vis_img, mesh_cam, faces_tensor, {'focal': focal, 'princpt': princpt}, rasterizer)
 
           out_results.append(out_frame_dict)
-          if save_render:
+          if save_render and fidx<n_frames_to_render:
             vis_image = cv.cvtColor(vis_img, cv.COLOR_BGR2RGB)
             writer.append_data(vis_img.astype(np.uint8))
 
@@ -335,7 +337,7 @@ def main():
         if save_render:
           writer.close()
         cap.release()
-        np.save(out_npy_path, out_results)
+        # np.save(out_npy_path, out_results)
 
 if __name__ == '__main__':
   main()
