@@ -266,7 +266,7 @@ def main():
           vis_img = original_img.copy()
 
           results = detector.predict(original_img,
-                                      device='cpu',
+                                      device=device,
                                       classes=00,
                                       conf=cfg.inference.detection.conf,
                                       save=cfg.inference.detection.save,
@@ -317,19 +317,18 @@ def main():
 
             mesh_cam = out["smplx_mesh_cam"]
 
-            pelvis_position = smplx_output['joints'][0, 0].cpu().numpy()
+            pelvis_position = smplx_output['joints'][0, 55, :].cpu().numpy()
+            print(smplx_output['joints'])
 
             verts = smplx_output['vertices']
             cam_param_dict = {'focal': focal, 'princpt': princpt}
 
-            start = time.time()
             points_visibility = check_visibility_pt3d_cached(
               rasterizer, img_rgb, verts, faces_tensor,
               cam_param_dict, visibility_cache,
               video_name, fidx, pelvis_position,
               motion_threshold=0.05  # 5cm movement thre
             )
-            print(time.time() - start)
             # new_joints_img = demoer.model.module.get_joints_visibility_optimized(
             #   smplx_output,
             #   faces_tensor,
@@ -344,7 +343,6 @@ def main():
             # generate confidence based on visibility
             # new_joints_img = demoer.model.module.not_get_joints_visibility(smplx_output)
             new_joints_img = demoer.model.module.get_joints_visibility(smplx_output, faces_tensor, points_visibility)
-            print(time.time() - start)
             new_joints_img[:, 0] = new_joints_img[:, 0] * bbox[2] / cfg.model.output_hm_shape[2] + bbox[0]
             new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
