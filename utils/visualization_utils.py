@@ -388,12 +388,12 @@ def check_visibility_pt3d(rasterizer, img, verts, faces, cam_param):
     # exit(0)
     return visibility
 
-def check_visibility_pt3d_cached(rasterizer, img, verts, faces, cam_param, 
-                                  cache, camera_name, frame_id, pelvis_position,
-                                  motion_threshold=0.05):
+def check_visibility_pt3d_cached(rasterizer, img, verts, faces, cam_param,
+                                  cache, camera_name, frame_id, person_id,
+                                  pelvis_position, motion_threshold=0.05):
     """
     Smart cached visibility check - only recomputes when person moves significantly
-    
+
     Args:
         cache: dict to store cached visibility data
         camera_name: identifier for the camera
@@ -404,16 +404,18 @@ def check_visibility_pt3d_cached(rasterizer, img, verts, faces, cam_param,
     # Initialize cache if needed
     if camera_name not in cache:
         cache[camera_name] = {
+          person_id : {
             'last_position': None,
             'visibility': None,
             'last_frame': -1
+          }
         }
-    
-    cache_entry = cache[camera_name]
-    
+
+    cache_entry = cache[camera_name][person_id]
+
     # Check if we need to recompute
     need_recompute = False
-    
+
     if cache_entry['visibility'] is None:
         # First time for this camera
         need_recompute = True
@@ -424,53 +426,53 @@ def check_visibility_pt3d_cached(rasterizer, img, verts, faces, cam_param,
         if movement > motion_threshold:
             need_recompute = True
             reason = f"moved {movement:.3f}m"
-    
+
     if need_recompute:
         # Compute visibility (expensive operation)
         visibility = check_visibility_pt3d(rasterizer, img, verts, faces, cam_param)
-        
+
         # Update cache
         cache_entry['visibility'] = visibility
         cache_entry['last_position'] = pelvis_position.copy()
         cache_entry['last_frame'] = frame_id
-        
+
         if frame_id > 0:  # Don't print for first frame
             print(f"Frame {frame_id}, Camera {camera_name}: Recomputed visibility ({reason})")
-    
+
     return cache_entry['visibility']
 
 
-def compute_joint_confidence_fast(verts_visibility, skinning_weights, num_joints, 
+def compute_joint_confidence_fast(verts_visibility, skinning_weights, num_joints,
                                    lower_body_indices=None, is_front_camera=True):
     """
     Fast joint confidence computation using weighted vertex visibility
-    
+
     Args:
         verts_visibility: (num_verts,) bool array of vertex visibility
         skinning_weights: (num_verts, num_joints) tensor of SMPL-X skinning weights
         num_joints: number of joints to compute confidence for
         lower_body_indices: list of joint indices for lower body
         is_front_camera: whether this is a front camera (full lower body occlusion)
-    
+
     Returns:
         joints_conf: (num_joints,) array of confidence scores [0, 1]
     """
     device = skinning_weights.device
-    
+
     # Convert visibility to tensor
     verts_vis_tensor = torch.from_numpy(verts_visibility.astype(np.float32)).to(device)
-    
+
     # Extract relevant skinning weights
     weights = skinning_weights[:, :num_joints]
-    
+
     # Weighted confidence: sum(weight * visibility) / sum(weight)
     weighted_vis = (weights.T @ verts_vis_tensor.unsqueeze(-1)).squeeze()
     total_weights = weights.sum(dim=0)
-    
+
     joints_conf = (weighted_vis / (total_weights + 1e-8)).cpu().numpy()
-    
+
     # Apply static occlusion for lower body (front cameras only)
     if is_front_camera and lower_body_indices is not None:
         joints_conf[lower_body_indices] = 0.0
-    
+
     return joints_conf

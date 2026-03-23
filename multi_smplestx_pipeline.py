@@ -266,7 +266,7 @@ def main():
           vis_img = original_img.copy()
 
           results = detector.predict(original_img,
-                                      device=device,
+                                      device='cpu',
                                       classes=00,
                                       conf=cfg.inference.detection.conf,
                                       save=cfg.inference.detection.save,
@@ -318,7 +318,6 @@ def main():
             mesh_cam = out["smplx_mesh_cam"]
 
             pelvis_position = smplx_output['joints'][0, 55, :].cpu().numpy()
-            print(smplx_output['joints'])
 
             verts = smplx_output['vertices']
             cam_param_dict = {'focal': focal, 'princpt': princpt}
@@ -326,8 +325,8 @@ def main():
             points_visibility = check_visibility_pt3d_cached(
               rasterizer, img_rgb, verts, faces_tensor,
               cam_param_dict, visibility_cache,
-              video_name, fidx, pelvis_position,
-              motion_threshold=0.05  # 5cm movement thre
+              video_name, fidx, person_id,
+              pelvis_position, motion_threshold=0.05  # 5cm movement thre
             )
             # new_joints_img = demoer.model.module.get_joints_visibility_optimized(
             #   smplx_output,
