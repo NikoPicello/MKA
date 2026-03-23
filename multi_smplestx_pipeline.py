@@ -29,6 +29,9 @@ import json
 import imageio
 import time
 
+cudnn.benchmark = False
+cudnn.deterministic = True
+
 joint_set = {
   'joint_num': 17,
   'joints_name': ('Pelvis', 'R_Hip', 'R_Knee', 'R_Ankle', 'L_Hip', 'L_Knee', 'L_Ankle', 'Torso', 'Neck', 'Head', 'Head_top', 'L_Shoulder', 'L_Elbow', 'L_Wrist', 'R_Shoulder', 'R_Elbow', 'R_Wrist'),
@@ -263,7 +266,7 @@ def main():
           vis_img = original_img.copy()
 
           results = detector.predict(original_img,
-                                      device='cuda:3',
+                                      device='cpu',
                                       classes=00,
                                       conf=cfg.inference.detection.conf,
                                       save=cfg.inference.detection.save,
@@ -319,25 +322,29 @@ def main():
             verts = smplx_output['vertices']
             cam_param_dict = {'focal': focal, 'princpt': princpt}
 
+            start = time.time()
             points_visibility = check_visibility_pt3d_cached(
-              rasterizer, img_rgb, verts, faces_tensor, 
-              cam_param_dict, visibility_cache, 
+              rasterizer, img_rgb, verts, faces_tensor,
+              cam_param_dict, visibility_cache,
               video_name, fidx, pelvis_position,
               motion_threshold=0.05  # 5cm movement thre
             )
-            new_joints_img = demoer.model.module.get_joints_visibility_optimized(
-              smplx_output,
-              faces_tensor,
-              points_visibility,
-              video_name,  # camera name
-              fidx,
-              visibility_cache
-            )
+            print(time.time() - start)
+            # new_joints_img = demoer.model.module.get_joints_visibility_optimized(
+            #   smplx_output,
+            #   faces_tensor,
+            #   points_visibility,
+            #   video_name,  # camera name
+            #   fidx,
+            #   visibility_cache
+            # )
 
             # mesh = out['smplx_mesh_cam'].detach().cpu().numpy()[0]
 
             # generate confidence based on visibility
             # new_joints_img = demoer.model.module.not_get_joints_visibility(smplx_output)
+            new_joints_img = demoer.model.module.get_joints_visibility(smplx_output, faces_tensor, points_visibility)
+            print(time.time() - start)
             new_joints_img[:, 0] = new_joints_img[:, 0] * bbox[2] / cfg.model.output_hm_shape[2] + bbox[0]
             new_joints_img[:, 1] = new_joints_img[:, 1] * bbox[3] / cfg.model.output_hm_shape[1] + bbox[1]
 
