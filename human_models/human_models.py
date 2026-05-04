@@ -1,10 +1,10 @@
 import numpy as np
 import torch
-import torch.nn as nn 
+import torch.nn as nn
 import os.path as osp
 import smplx
 import pickle
-import cv2 
+import cv2
 from functools import partial
 
 # from hawor_models.utils.rotation import batch_rodrigues, compute_twist_rotation
@@ -246,7 +246,7 @@ class SMPLX:
         'rhand': range(self.joints_name.index('R_Thumb_1'), self.joints_name.index('R_Pinky_4')+1),
         'hand': range(self.joints_name.index('L_Thumb_1'), self.joints_name.index('R_Pinky_4')+1),
         'face': range(self.joints_name.index('Face_1'), self.joints_name.index('Face_72')+1)}
-        
+
         # changed SMPLX joint set for PositionNet prediction
         self.pos_joint_num = 65 # 25 (body joints) + 40 (hand joints)
         self.pos_joints_name = \
@@ -267,10 +267,10 @@ class SMPLX:
                                         self.pos_joints_name.index('R_Middle_1') - len(self.pos_joint_part['body']) - len(self.pos_joint_part['lhand']),
                                         self.pos_joints_name.index('R_Ring_1') - len(self.pos_joint_part['body']) - len(self.pos_joint_part['lhand']),
                                         self.pos_joints_name.index('R_Pinky_1') - len(self.pos_joint_part['body']) - len(self.pos_joint_part['lhand'])]
-        
+
         self.prev_elbow_joints = [None, None]
-    
-    
+
+
     @classmethod
     def get_instance(cls):
         """Retrieve the singleton instance of SMPL."""
@@ -310,20 +310,20 @@ class SMPLX:
         return new_joint
 
     def vertices2joints(self, gender, betas):
-        device = betas.device 
-        
+        device = betas.device
+
         _v_template = self.layer[gender].v_template.clone().to(device)
         _shapedirs = self.layer[gender].shapedirs.clone().to(device)
         _J_regressor = self.layer[gender].J_regressor.clone().to(device)
 
         v = torch.einsum('bl,mkl->bmk', [betas, _shapedirs]) + _v_template
         j = torch.einsum('bik,ji->bjk', [v, _J_regressor])
-        return j 
+        return j
 
     def get_kinematic_tree(self, gender, num_joints=-1):
         parents = self.layer[gender].parents.clone()
         if num_joints < 0 :
-            num_joints = len(parents) 
+            num_joints = len(parents)
 
         parents = parents[:num_joints]
         children = torch.ones_like(parents) * -1
@@ -337,11 +337,11 @@ class SMPLX:
             else:
                 assert children[parents[i]] < 0
                 children[parents[i]] -= 1
-        return parents, children 
+        return parents, children
 
     def get_zero_pose_joint_and_vertex(self, gender, betas, expression=None):
-        device = betas.device 
-        
+        device = betas.device
+
         _v_template = self.layer[gender].v_template.clone().to(device)
         _shapedirs = self.layer[gender].shapedirs.clone().to(device)
         _expdirs = self.layer[gender].exp_dirs.clone().to(device)
@@ -354,7 +354,7 @@ class SMPLX:
         else:
             shape_components = betas.clone()
             shapedirs = _shapedirs.clone()
-            
+
         v = torch.einsum('bl,mkl->bmk', [shape_components, shapedirs]) + _v_template
         j = torch.einsum('bik,ji->bjk', [v, _J_regressor])
         j, v = j - j[:, :1], v - j[:, :1]
@@ -371,7 +371,7 @@ class SMPLX:
         joint_pos = joint_pos.view(joint_pos.shape[0], -1, 3)
         bone_vec = _inverse_tree(joint_pos, _parent, torch.add, torch.neg)
         return bone_vec
-    
+
     def forward_kinematics_R(self, gender, R_local):
         _parent = self.layer[gender].parents.clone().to(R_local.device)
         R_local = R_local.view(R_local.shape[0], -1, 3, 3)
@@ -385,7 +385,7 @@ class SMPLX:
         return T_global
 
     def forward_kinematics(self, gender, full_pose, shape, expr=None, tran=None, calc_mesh=False):
-        
+
         def add_tran(x):
             return x if tran is None else x + tran.view(-1, 1, 3)
 
@@ -393,7 +393,7 @@ class SMPLX:
         device = full_pose.device
         full_pose = full_pose.view(batch, -1, 3)
         pose = axis_angle_to_rotation_matrix(full_pose).view(batch, -1, 3, 3)
-        
+
         j, v = [_.expand(batch, -1, -1) for _ in self.get_zero_pose_joint_and_vertex(gender, shape, expr)]
         T_local = transformation_matrix(pose, self.joint_position_to_bone_vector(gender, j))
         T_global = self.forward_kinematics_T(gender, T_local)
@@ -405,13 +405,13 @@ class SMPLX:
         _skinning_weights = self.layer[gender].lbs_weights.clone().to(device)
         T_vertex = torch.tensordot(T_global, _skinning_weights, dims=([1], [1])).permute(0, 3, 1, 2)
         vertex_global = torch.matmul(T_vertex, append_one(v, dim=-1).unsqueeze(-1)).squeeze(-1)[..., :3]
-        return pose_global, add_tran(joint_global), add_tran(vertex_global)    
-        
+        return pose_global, add_tran(joint_global), add_tran(vertex_global)
+
     def get_lbs_verts(self, gender, full_pose, shape, expr=None, tran=None):
         batch = full_pose.shape[0]
         device = full_pose.device
-        
-        #### 
+
+        ####
         # pose = full_pose.reshape(-1, 165)
         # _pose_mean = self.layer[gender].pose_mean.clone().to(device)
         # pose += _pose_mean
@@ -426,7 +426,7 @@ class SMPLX:
         _parents = self.layer[gender].parents.clone().to(device)
         _skinning_weights = self.layer[gender].lbs_weights.clone().to(device)
 
-        from smplx.lbs import lbs 
+        from smplx.lbs import lbs
         if expr is not None:
             shape_components = torch.cat([shape, expr], dim=-1)
             shapedirs = torch.cat([_shapedirs, _expdirs], dim=-1)

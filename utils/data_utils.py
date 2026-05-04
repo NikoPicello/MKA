@@ -254,7 +254,7 @@ def process_db_coord(joint_img, joint_cam, joint_valid, do_flip, img_shape, flip
         for pair in flip_pairs:
             joint_img[pair[0], :], joint_img[pair[1], :] = joint_img[pair[1], :].copy(), joint_img[pair[0], :].copy()
             joint_cam[pair[0], :], joint_cam[pair[1], :] = joint_cam[pair[1], :].copy(), joint_cam[pair[0], :].copy()
-            joint_valid[pair[0], :], joint_valid[pair[1], :] = joint_valid[pair[1], :].copy(), joint_valid[pair[0], 
+            joint_valid[pair[0], :], joint_valid[pair[1], :] = joint_valid[pair[1], :].copy(), joint_valid[pair[0],
                                                                                                :].copy()
 
     # 3D data rotation augmentation
@@ -301,7 +301,7 @@ def process_human_model_raw(human_model_param, human_model_type='smplx'):
     if human_model_type == 'smplx':
         smpl_x = SMPLX.get_instance()
         human_model = smpl_x
-        
+
         root_pose, body_pose, shape, trans = human_model_param['root_pose'], human_model_param['body_pose'], \
                                              human_model_param['shape'], human_model_param['trans']
 
@@ -343,18 +343,18 @@ def process_human_model_raw(human_model_param, human_model_type='smplx'):
                                           right_hand_pose=rhand_pose.view(1, -1), jaw_pose=jaw_pose.view(1, -1),
                                           leye_pose=zero_pose, reye_pose=zero_pose, expression=expr,
                                           return_full_pose=True)
-        
+
         # joint_world = output.joints[0].numpy()#[smpl_x.joint_idx, :]
         # global_orient = output.global_orient[0].numpy()
         # full_pose = output.full_pose[0].numpy().reshape(-1, 3)
         # mesh_world = output.vertices[0].cpu().numpy()
         pose_global, joint_global, vertex_global = smpl_x.forward_kinematics(gender, shape, output.full_pose, trans, calc_mesh=True)
         return pose_global[0], joint_global[0], vertex_global[0], output.vertices[0]
-    
-    return None, None, None, None  
 
-def process_human_model_output(human_model_param, cam_param, do_flip, img_shape, img2bb_trans, 
-                               rot, human_model_type, body_3d_size, hand_3d_size, face_3d_size, 
+    return None, None, None, None
+
+def process_human_model_output(human_model_param, cam_param, do_flip, img_shape, img2bb_trans,
+                               rot, human_model_type, body_3d_size, hand_3d_size, face_3d_size,
                                input_img_shape, output_hm_shape, joint_img=None):
     if human_model_type == 'smplx':
         smpl_x = SMPLX.get_instance()
@@ -370,7 +370,7 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
             body_valid = False
         else:
             body_valid = True
-            
+
         if not body_valid:
             rotation_valid[smpl_x.orig_joint_part['body']] = 0
             coord_valid[smpl_x.joint_part['body']] = 0
@@ -427,7 +427,7 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
                                           leye_pose=zero_pose, reye_pose=zero_pose, expression=expr)
         mesh_cam = output.vertices[0].numpy()
         joint_cam = output.joints[0].numpy()[smpl_x.joint_idx, :]
- 
+
         if 'R' in cam_param and 't' in cam_param:
             R, t = np.array(cam_param['R'], dtype=np.float32).reshape(3, 3), np.array(cam_param['t'],
                                                                                       dtype=np.float32).reshape(1, 3)
@@ -440,8 +440,8 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
 
         # joint coordinates
         if 'focal' not in cam_param or 'princpt' not in cam_param:
-            assert joint_img is not None 
-        else:   
+            assert joint_img is not None
+        else:
             joint_img = cam2pixel(joint_cam, cam_param['focal'], cam_param['princpt'])
 
         joint_img_original = joint_img.copy()
@@ -485,7 +485,7 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
             gender = 'neutral'
         shape = torch.FloatTensor(shape).view(1, -1)
         trans = torch.FloatTensor(trans).view(1, -1)  # translation vector
-        
+
 
         # apply camera extrinsic (rotation)
         # merge root pose and camera rotation
@@ -500,7 +500,7 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
         # get mesh and joint coordinates
             root_pose = pose[smpl.orig_root_joint_idx].view(1, 3)
             pose = torch.cat((pose[:smpl.orig_root_joint_idx, :], pose[smpl.orig_root_joint_idx + 1:, :])).view(1, -1)
-        
+
         with torch.no_grad():
             output = smpl.layer[gender](betas=shape, body_pose=pose, global_orient=root_pose, transl=trans)
         mesh_cam = output.vertices[0].numpy()
@@ -517,15 +517,15 @@ def process_human_model_output(human_model_param, cam_param, do_flip, img_shape,
 
         # joint coordinates
         if 'focal' not in cam_param or 'princpt' not in cam_param:
-            assert joint_img is not None 
-        else:   
+            assert joint_img is not None
+        else:
             joint_img = cam2pixel(joint_cam, cam_param['focal'], cam_param['princpt'])
-        
+
         joint_img_original = joint_img.copy()
         joint_cam = joint_cam - joint_cam[smpl.root_joint_idx, None, :]  # body root-relative
 
 
-    
+
     mesh_cam_orig = mesh_cam.copy() # back-up the original one
     if human_model_type == 'smplx':
         ## so far, data augmentations are not applied yet

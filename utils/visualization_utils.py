@@ -235,6 +235,11 @@ def render_mesh_pt3d(img, verts, faces, cam_param, rasterizer=None):
     focal_pt = focal_length / scale
     p0_pt = -(principal_point - c0) / scale
 
+    # print(f"image size H:{img_h}, W:{img_w}")
+    # print(f"scale: {scale}")
+    # print(f"focal length: {focal_length}")
+    # print(f"principal_point: {principal_point}")
+
     camera_pose = torch.eye(4).unsqueeze(0).to(device)
     R_pt = camera_pose[:, :3, :3].clone().permute(0, 2, 1)
     R_pt[:, :, :2] *= -1

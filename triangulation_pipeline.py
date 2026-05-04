@@ -34,42 +34,42 @@ def visualize_3d_keypoints(kpts, extrinsic_mat):
     Visualize 3D keypoints in both world and camera coordinate frames
     """
     fig = plt.figure(figsize=(15, 5))
-    
+
     # === 1. World coordinates (original) ===
     ax1 = fig.add_subplot(131, projection='3d')
     ax1.scatter(kpts[:, 0], kpts[:, 1], kpts[:, 2], c='blue', marker='o', s=50)
-    
+
     ax1.set_xlabel('X (world)')
     ax1.set_ylabel('Y (world)')
     ax1.set_zlabel('Z (world)')
     ax1.set_title('World Coordinates')
     set_axes_equal(ax1)
-    
+
     # === 2. Camera coordinates (after extrinsic transform) ===
     ax2 = fig.add_subplot(132, projection='3d')
-    
+
     # Transform to camera space
     joint_num = kpts.shape[0]
     ones = np.ones((joint_num, 1))
     kpt3d_homo = np.concatenate([kpts, ones], axis=1)
     kpt3d_cam = (extrinsic_mat @ kpt3d_homo.T).T[:, :3]
-    
-    ax2.scatter(kpt3d_cam[:, 0], kpt3d_cam[:, 1], kpt3d_cam[:, 2], 
+
+    ax2.scatter(kpt3d_cam[:, 0], kpt3d_cam[:, 1], kpt3d_cam[:, 2],
                 c='red', marker='o', s=5)
-    
+
     # Draw camera coordinate axes
     axis_length = np.max(np.abs(kpt3d_cam)) * 0.5
     ax2.quiver(0, 0, 0, axis_length, 0, 0, color='red', arrow_length_ratio=0.1, label='X')
     ax2.quiver(0, 0, 0, 0, axis_length, 0, color='green', arrow_length_ratio=0.1, label='Y')
     ax2.quiver(0, 0, 0, 0, 0, axis_length, color='blue', arrow_length_ratio=0.1, label='Z')
-    
+
     ax2.set_xlabel('X (cam)')
     ax2.set_ylabel('Y (cam)')
     ax2.set_zlabel('Z (cam)')
     ax2.set_title('Camera Coordinates')
     ax2.legend()
     set_axes_equal(ax2)
-    
+
     # === 3. Top-down view ===
     ax3 = fig.add_subplot(133)
     ax3.scatter(kpt3d_cam[:, 0], kpt3d_cam[:, 2], c='red', marker='o', s=5)
@@ -81,7 +81,7 @@ def visualize_3d_keypoints(kpts, extrinsic_mat):
     ax3.legend()
     ax3.axhline(y=0, color='k', linestyle='--', alpha=0.3)
     ax3.axvline(x=0, color='k', linestyle='--', alpha=0.3)
-    
+
     # Print statistics
     print(f"\n=== 3D Keypoints Statistics ===")
     print(f"World coords - X range: [{kpts[:, 0].min():.2f}, {kpts[:, 0].max():.2f}]")
@@ -91,11 +91,11 @@ def visualize_3d_keypoints(kpts, extrinsic_mat):
     print(f"Camera coords - Y range: [{kpt3d_cam[:, 1].min():.2f}, {kpt3d_cam[:, 1].max():.2f}]")
     print(f"Camera coords - Z range: [{kpt3d_cam[:, 2].min():.2f}, {kpt3d_cam[:, 2].max():.2f}]")
     print(f"Points behind camera (Z < 0): {np.sum(kpt3d_cam[:, 2] < 0)}")
-    
+
     plt.tight_layout()
     plt.show()
     # plt.savefig(f'./3d_keypoints_visualization.png', dpi=150, bbox_inches='tight')
-    
+
     return kpt3d_cam
 
 def set_axes_equal(ax):
@@ -218,7 +218,6 @@ class CameraParameter(CameraParameter_mm):
     gt_R = np.array(cam_dict["R"], dtype=np.float32)
     gt_t = np.array(cam_dict["T"], dtype=np.float32)
     intrinsic_mat = np.array(cam_dict["K"], dtype=np.float32)
-    print(cam_dict['D'])
     dist_coef = np.array(cam_dict["D"][0], dtype=np.float32)
 
     if "Fit3D" in dirname:
@@ -336,8 +335,8 @@ cam_map = {
 }
 
 person_cams = {
-    0 : ['GF', 'GB', 'FC1', 'HA1'],
-    1 : ['GF', 'GB', 'FC2', 'HA2']
+    0 : ['FC1', 'HA1'], #, 'GF', 'FC1', 'GB'], # , 'FC1', 'HA1'],
+    1 : ['FC2', 'HA2']
 }
 
 activities = ['animals', 'gaze', 'ghost', 'lego', 'talk']
@@ -389,7 +388,7 @@ def main():
       R = fs.getNode('R').mat()
       T = fs.getNode('T').mat()
       fs.release()
-      cam_parameter = CameraParameter(name=cam_map[cam_name], H=1080, W=1920) # TODO: check this
+      cam_parameter = CameraParameter(name=cam_map[cam_name], H=720, W=1280) # TODO: check this
       cam_parameter.load_camera_gt({'K' : K, 'D' : D, 'R' : R, 'T' : T})
       cam_para_list[cam_map[cam_name]] = cam_parameter
 
@@ -406,8 +405,8 @@ def main():
       for vid_path in vid_paths:
         if img_width is None or img_height is None:
           cap = cv.VideoCapture(vid_path)
-          img_width = int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
-          img_height = int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
+          img_width = 1280 # int(cap.get(cv.CAP_PROP_FRAME_WIDTH))
+          img_height = 720 # int(cap.get(cv.CAP_PROP_FRAME_HEIGHT))
           print(img_width)
           print(img_height)
           total_frames = int(cap.get(cv.CAP_PROP_FRAME_COUNT))
@@ -418,8 +417,7 @@ def main():
         kpt2d_path_arr[video_name] = kpt2d_path
         vid_paths_dict[video_name] = vid_path
 
-      total_frames = 4
-
+      total_frames = 5
       curr_out_path = os.path.join(out_path, f"{session_id}/{activity}/")
       os.makedirs(curr_out_path, exist_ok=True)
       out_wo_opt_npy_path = os.path.join(curr_out_path, "no_optim_kpt3d.npz")
@@ -428,7 +426,7 @@ def main():
 
       # TODO: CHANGE INTO LOOPING FIRST ON EVERY FRAME AND TRINAUGLATE THE PEOPLE AT EACH TIME STAMP, INSTEAD OF VICE-VERSA
       result_dict_all = {}
-      for p in [0]: #, 1]: 
+      for p in [0, 1]:
         printv(f"Triangulation on person {p+1}/2", verbose=verbose)
         kpt2d_all_dict  = {}
         not_valid_arr   = {}
@@ -437,7 +435,7 @@ def main():
           not_valid_arr[cam_id] = []
           kpt2d_list = []
           result_dict = {}
-          
+
           kpt2d_arr = np.load(kpt2d_path_arr[cam_id], allow_pickle=True)
           frame_len = len(kpt2d_arr)
           print("=======", cam_id, frame_len, flush=True)
@@ -476,44 +474,48 @@ def main():
         for cam_id in person_cams[p]:
           curr_kpt2d = kpt2d_all_dict[cam_id].copy()
           curr_kpt2d = curr_kpt2d[unique_mask]
-          
+
           print(f"cam {cam_id} after filter", curr_kpt2d.shape, flush=True)
           printv(f"filtered kpts 2d has {len(curr_kpt2d)} elements", verbose=verbose)
-          
+
           human_data_dict[cam_id] = {
             'keypoints2d': curr_kpt2d,
             'keypoints2d_mask': kpt2d_mask,
             'keypoints2d_convention': 'smplx'
           }
-        
-        curr_cam_para = [cam_para_list[cam_id] for cam_id in person_cams[p]]
-        scene = TriangulateScene(curr_cam_para, 0.1)
+
+        curr_cam_para = []
+        for cam_id in person_cams[p]:
+          print(cam_id)
+          curr_cam_para.append(cam_para_list[cam_id])
+        # scene = TriangulateScene(curr_cam_para, 0.1)
+        scene = TriangulateScene(curr_cam_para, 'auto')
         result_dict = {'optim': {}, 'no_optim': {}, 'invalid_idx': invalid_idx_arr}
 
         keypoints3d_no_optim = []
         keypoints3d_optim = []
         frame_num = human_data_dict[cam_id]["keypoints2d"].shape[0]
-        frame_num = 4
-        interval = 2
+        interval = 5
         printv(f"frame num is {frame_num}", verbose=verbose)
         printv("Applying triangulation", verbose=verbose)
-          
+
         for _fi in trange(0, frame_num, interval):
           human_data = []
           start_fi = _fi
           end_fi = min(_fi + interval, frame_num)
           for cam_id in person_cams[p]:
+            print(cam_id)
             human_data.append({
               'keypoints2d': human_data_dict[cam_id]["keypoints2d"][start_fi:end_fi],
               'keypoints2d_mask': kpt2d_mask,
               'keypoints2d_convention': 'smplx'
             })
-          
+
           kpt3d_no_opt = scene.triangulate(human_data)
           kpt3d_opt = scene.optim(human_data, keypoints3d=kpt3d_no_opt, constraints=None)
           keypoints3d_no_optim.append(kpt3d_no_opt)
           keypoints3d_optim.append(kpt3d_opt)
-        
+
         result_dict['no_optim']['keypoints3d'] = np.concatenate(keypoints3d_no_optim, axis=0)
         result_dict['optim']['keypoints3d'] = np.concatenate(keypoints3d_optim, axis=0)
         printv(f"keypoints3d non optimal shape is : {result_dict['no_optim']['keypoints3d'].shape}", verbose=verbose)
@@ -530,9 +532,9 @@ def main():
             if 'no_' in key: out_npy_path = out_wo_opt_npy_path
             else: out_npy_path = out_w_opt_npy_path
             # human_data_3d.dump(out_npy_path)
-        
+
         result_dict_all[p] = result_dict
-      
+
       # print(result_dict_all[0]['optim']['keypoints3d'].shape)
       # print(result_dict_all[0]['no_optim']['keypoints3d'].shape)
       # print(result_dict_all[1]['optim']['keypoints3d'].shape)
@@ -543,12 +545,12 @@ def main():
       print("=== visualization", out_video_path, flush=True)
       writer = imageio.get_writer(
         out_video_path,
-        fps=fps, mode='I', 
-        format='FFMPEG', 
+        fps=fps, mode='I',
+        format='FFMPEG',
         macro_block_size=1
       )
 
-      ref_cam = 'FC2'
+      ref_cam = 'GF'
       cap = cv.VideoCapture(vid_paths_dict[ref_cam])
       cam_param = cam_para_list[ref_cam]
       intrinsic_mat = cam_param.get_mat_np('in_mat')
@@ -557,6 +559,9 @@ def main():
       t_vec = np.array(cam_param.get_value('translation'))
       extrinsic_mat = np.eye(4, dtype=np.float32)
       extrinsic_mat[:3, :3] = R_mat.copy()
+
+      new_K, _ = cv.getOptimalNewCameraMatrix(intrinsic_mat, dist_coef, (1280,720), 1)
+
       if len(t_vec.shape) == 1:
         extrinsic_mat[:3, 3] = t_vec.copy()
       else:
@@ -567,14 +572,15 @@ def main():
         if not ret:
           break
         rgb_img = cv.cvtColor(frame, cv.COLOR_BGR2RGB)
-        for p in [0]: #, 1]:
+        rgb_img = cv.undistort(frame, intrinsic_mat, dist_coef, None, new_K)
+        for p in [0, 1]:
           if p not in result_dict_all: continue
 
           result_dict = result_dict_all[p]
-          kpt3d = result_dict['optim']['keypoints3d'][fi, :]
+          kpt3d = result_dict['no_optim']['keypoints3d'][fi, :]
           # kpt3d = result_dict['optim']['keypoints3d'][fi, :3]
 
-          kpt3d_cam = visualize_3d_keypoints(kpt3d, extrinsic_mat)
+          # kpt3sd_cam = visualize_3d_keypoints(kpt3d, extrinsic_mat)
 
           invalid_idx_arr = result_dict['invalid_idx']
 
@@ -612,9 +618,7 @@ def main():
       writer.close()
       cap.release()
 
-
-      return 
-
+      return
 
       result_dict_all = {}
       for p in [0, 1]:
@@ -635,7 +639,10 @@ def main():
           print("=======", cam_id, frame_len, flush=True)
 
           prev_kpt2d = None
-          for fi in range(total_frames):
+          print(total_frames)
+          for fi in range(total_frames-1):
+            print(fi)
+
             if "kpt2d" in kpt2d_arr[fi][p]:
               kpt2d = np.array(kpt2d_arr[fi][p]["kpt2d"], dtype=np.float32)[:kpts_num]
               for _i in range(kpts_num):

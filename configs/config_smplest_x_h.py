@@ -15,7 +15,7 @@ config = {
     "ARCTIC_train_sample_interval": 10,
     "RenBody_train_sample_interval": 10,
     "Talkshow_train_sample_interval": 10,
-    "bbox_ratio": 1.2,
+    "bbox_ratio": 1.,
     "no_aug": False,
     "data_strategy": "balance",
     "total_data_len": 7500000,
@@ -85,14 +85,14 @@ config = {
     'input_img_shape': (512, 384),
     'input_body_shape': (256, 192),
     'output_hm_shape': (16, 16, 12),
-    'focal': (5000, 5000),
+    'focal': (1500, 1500),
     'princpt': (192 / 2, 256 / 2),  # virtual principal point position
     'body_3d_size': 2,
     'hand_3d_size': 0.3,
     'face_3d_size': 0.3,
     'camera_3d_size': 2.5,
   },
-  
+
   "log":{
       'exp_name': None,
       'output_dir': None,
